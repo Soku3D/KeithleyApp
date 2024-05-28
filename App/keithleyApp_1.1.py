@@ -1,4 +1,4 @@
-# Form implementation generated from reading ui file '.\AppUI.ui'
+# Form implementation generated from reading ui file '.\AppUI_1.1.ui'
 #
 # Created by: PyQt6 UI code generator 6.4.2
 #
@@ -7,6 +7,7 @@
 
 
 from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtCore import QTimer
 import pyqtgraph as pg
 import pyvisa
 from functools import partial
@@ -14,37 +15,42 @@ import numpy as np
 import time 
 
 class Ui_MainWindow(object):
+    def __init__(self):
+        super().__init__()
+        self.device2420 = None
+        self.device2635b = None
 
-    device2420 = None
-    device2635b = None
+        self.currDrainVolt = 0
+        self.currGateVolt = 0
 
-    currDrainVolt = 0
-    currGateVolt = 0
-    currTime = 0
-    gateStep = 0
-    drainStep = 0
+        self.currTime = 0
+        self.startTIme = 0
+        
+        self.gateStep = 0
+        self.drainStep = 0
 
-    Vd = []
-    Vg = []
-    C = []
-    time = []
+        self.Vd = []
+        self.Vg = []
+        self.Currents = []
+        self.times = []
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.updateData)
 
     def setupUi(self, MainWindow):
-       
-
         MainWindow.setObjectName("MainWindow")
-        MainWindow.resize(1058, 536)
+        MainWindow.resize(1280, 720)
         self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.KS_Label = QtWidgets.QLabel(parent=self.centralwidget)
-        self.KS_Label.setGeometry(QtCore.QRect(40, 10, 111, 21))
+        self.KS_Label.setGeometry(QtCore.QRect(40, 30, 111, 21))
         font = QtGui.QFont()
         font.setFamily("Arial")
         font.setBold(True)
         self.KS_Label.setFont(font)
         self.KS_Label.setObjectName("KS_Label")
         self.KS_TabWidget = QtWidgets.QTabWidget(parent=self.centralwidget)
-        self.KS_TabWidget.setGeometry(QtCore.QRect(40, 50, 201, 181))
+        self.KS_TabWidget.setGeometry(QtCore.QRect(40, 70, 201, 181))
         self.KS_TabWidget.setObjectName("KS_TabWidget")
         self.keithley2635b = QtWidgets.QWidget()
         font = QtGui.QFont()
@@ -61,18 +67,14 @@ class Ui_MainWindow(object):
         self.label_2 = QtWidgets.QLabel(parent=self.keithley2635b)
         self.label_2.setGeometry(QtCore.QRect(10, 60, 101, 21))
         self.label_2.setObjectName("label_2")
-        
         self.CurrentLimit_2635b = QtWidgets.QDoubleSpinBox(parent=self.keithley2635b)
         self.CurrentLimit_2635b.setGeometry(QtCore.QRect(120, 60, 51, 22))
         self.CurrentLimit_2635b.setProperty("value", 0.1)
         self.CurrentLimit_2635b.setObjectName("CurrentLimit_2635b")
-        
         self.IsConnected_2635b = QtWidgets.QLabel(parent=self.keithley2635b)
         self.IsConnected_2635b.setGeometry(QtCore.QRect(0, 130, 190, 16))
         self.IsConnected_2635b.setText("")
         self.IsConnected_2635b.setObjectName("IsConnected_2635b")
-        self.IsConnected_2635b.setFont(font)
-       
         self.connectBt_2635b = QtWidgets.QPushButton(parent=self.keithley2635b)
         self.connectBt_2635b.setGeometry(QtCore.QRect(60, 100, 75, 24))
         self.connectBt_2635b.setObjectName("connectBt_2635b")
@@ -111,23 +113,20 @@ class Ui_MainWindow(object):
         font.setFamily("Arial")
         self.ConnectBt_2420.setFont(font)
         self.ConnectBt_2420.setObjectName("ConnectBt_2420")
-        
         self.IsConnected_2420 = QtWidgets.QLabel(parent=self.Keithley2420)
         self.IsConnected_2420.setGeometry(QtCore.QRect(0, 130, 190, 16))
         self.IsConnected_2420.setText("")
         self.IsConnected_2420.setObjectName("IsConnected_2420")
-        self.IsConnected_2420.setFont(font)
-        
         self.KS_TabWidget.addTab(self.Keithley2420, "")
         self.KS_Label_2 = QtWidgets.QLabel(parent=self.centralwidget)
-        self.KS_Label_2.setGeometry(QtCore.QRect(50, 240, 111, 21))
+        self.KS_Label_2.setGeometry(QtCore.QRect(50, 290, 111, 21))
         font = QtGui.QFont()
         font.setFamily("Arial")
         font.setBold(True)
         self.KS_Label_2.setFont(font)
         self.KS_Label_2.setObjectName("KS_Label_2")
         self.RS_TabWidget = QtWidgets.QTabWidget(parent=self.centralwidget)
-        self.RS_TabWidget.setGeometry(QtCore.QRect(40, 280, 201, 161))
+        self.RS_TabWidget.setGeometry(QtCore.QRect(40, 330, 201, 161))
         self.RS_TabWidget.setObjectName("RS_TabWidget")
         self.RS_keithley2635b = QtWidgets.QWidget()
         font = QtGui.QFont()
@@ -188,52 +187,81 @@ class Ui_MainWindow(object):
         self.RS_2420_VStep.setObjectName("RS_2420_VStep")
         self.RS_TabWidget.addTab(self.Keithley2420_2, "")
         self.RunButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.RunButton.setGeometry(QtCore.QRect(50, 450, 81, 24))
+        self.RunButton.setGeometry(QtCore.QRect(50, 500, 81, 24))
         self.RunButton.setObjectName("RunButton")
-        
         self.AbortButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.AbortButton.setGeometry(QtCore.QRect(144, 450, 81, 24))
+        self.AbortButton.setGeometry(QtCore.QRect(144, 500, 81, 24))
         self.AbortButton.setObjectName("AbortButton")
         self.line_2 = QtWidgets.QFrame(parent=self.centralwidget)
-        self.line_2.setGeometry(QtCore.QRect(253, 10, 20, 481))
+        self.line_2.setGeometry(QtCore.QRect(253, 20, 20, 641))
         self.line_2.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         self.line_2.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_2.setObjectName("line_2")
         self.line_3 = QtWidgets.QFrame(parent=self.centralwidget)
-        self.line_3.setGeometry(QtCore.QRect(40, 230, 201, 16))
+        self.line_3.setGeometry(QtCore.QRect(40, 280, 201, 16))
         self.line_3.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line_3.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_3.setObjectName("line_3")
         self.line_4 = QtWidgets.QFrame(parent=self.centralwidget)
-        self.line_4.setGeometry(QtCore.QRect(40, 260, 201, 16))
+        self.line_4.setGeometry(QtCore.QRect(40, 310, 201, 16))
         self.line_4.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line_4.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_4.setObjectName("line_4")
         self.line_5 = QtWidgets.QFrame(parent=self.centralwidget)
-        self.line_5.setGeometry(QtCore.QRect(40, 30, 201, 16))
+        self.line_5.setGeometry(QtCore.QRect(40, 50, 201, 16))
         self.line_5.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line_5.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_5.setObjectName("line_5")
         self.line_6 = QtWidgets.QFrame(parent=self.centralwidget)
-        self.line_6.setGeometry(QtCore.QRect(40, 0, 201, 16))
+        self.line_6.setGeometry(QtCore.QRect(40, 20, 201, 16))
         self.line_6.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line_6.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_6.setObjectName("line_6")
-    
-        self.plot_graph = pg.PlotWidget()  
-        #self.canvas = SweepDataPlot()
-            
         self.gridLayoutWidget = QtWidgets.QWidget(parent=self.centralwidget)
-        self.gridLayoutWidget.setGeometry(QtCore.QRect(280, 10, 751, 481))
+        self.gridLayoutWidget.setGeometry(QtCore.QRect(280, 10, 981, 651))
         self.gridLayoutWidget.setObjectName("gridLayoutWidget")
         self.gridLayout = QtWidgets.QGridLayout(self.gridLayoutWidget)
         self.gridLayout.setContentsMargins(0, 0, 0, 0)
         self.gridLayout.setObjectName("gridLayout")
-        self.gridLayout.addWidget(self.plot_graph)
+        self.tabWidget = QtWidgets.QTabWidget(parent=self.gridLayoutWidget)
+        self.tabWidget.setObjectName("tabWidget")
+        self.DataGraph = QtWidgets.QWidget()
+        self.DataGraph.setObjectName("DataGraph")
 
+        
+        self.gridLayoutWidget_2 = QtWidgets.QWidget(parent=self.DataGraph)
+        self.gridLayoutWidget_2.setGeometry(QtCore.QRect(0, 0, 971, 621))
+        self.gridLayoutWidget_2.setObjectName("gridLayoutWidget_2")
+        self.gridLayout_graph = QtWidgets.QGridLayout(self.gridLayoutWidget_2)
+        self.gridLayout_graph.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout_graph.setObjectName("gridLayout_graph")
+
+        self.graphData = pg.PlotWidget()
+        self.graphData.setBackground('w')
+        self.graphData.setLabel('left', 'Currents (A)')
+        self.graphData.setLabel('bottom', 'Gate Voltage (V)')
+        self.graphData.showGrid(x=True, y=True, alpha = 0.3)
+        self.graphData.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))  # y축 라인을 검은색으로 설정
+        self.graphData.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))  # x축 라인을 검은색으로 설정
+        self.curve = self.plotWidget.plot(self.times, self.temperatures, pen=pg.mkPen(color=(255, 0, 0), width=2))  # 데이터 라인을 빨간색으로 설정
+        self.scatter = pg.ScatterPlotItem(size=10, brush=pg.mkBrush(255, 0, 0), pen=pg.mkPen(None))
+        self.plotWidget.addItem(self.scatter)
+
+        self.gridLayout_graph.addWidget(self.graphData)
+        
+        self.tabWidget.addTab(self.DataGraph, "")
+        self.DtataTable = QtWidgets.QWidget()
+        self.DtataTable.setObjectName("DtataTable")
+        self.DataTableWidget = QtWidgets.QTableWidget(parent=self.DtataTable)
+        self.DataTableWidget.setGeometry(QtCore.QRect(-5, 1, 981, 621))
+        self.DataTableWidget.setObjectName("DataTableWidget")
+        self.DataTableWidget.setColumnCount(0)
+        self.DataTableWidget.setRowCount(0)
+        self.tabWidget.addTab(self.DtataTable, "")
+        self.gridLayout.addWidget(self.tabWidget, 0, 0, 1, 1)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(parent=MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1058, 22))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1280, 22))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(parent=MainWindow)
@@ -242,12 +270,13 @@ class Ui_MainWindow(object):
 
         self.retranslateUi(MainWindow)
         self.KS_TabWidget.setCurrentIndex(0)
-        self.RS_TabWidget.setCurrentIndex(1)
+        self.RS_TabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-        self.RunButton.clicked.connect(self.KeithleySweep)
-        self.ConnectBt_2420.clicked.connect(lambda : self.KeithleyConnect("2420", 24))
-        self.connectBt_2635b.clicked.connect(partial(self.KeithleyConnect, "2635b", 26))
+        self.RunButton.clicked.connect(self.runStart)
+        self.ConnectBt_2420.clicked.connect(lambda : self.keithleyConnect("2420", 24))
+        self.connectBt_2635b.clicked.connect(partial(self.keithleyConnect, "2635b", 26))
         
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -272,8 +301,11 @@ class Ui_MainWindow(object):
         self.RS_TabWidget.setTabText(self.RS_TabWidget.indexOf(self.Keithley2420_2), _translate("MainWindow", "Keithley2420"))
         self.RunButton.setText(_translate("MainWindow", "Run"))
         self.AbortButton.setText(_translate("MainWindow", "Abort"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.DataGraph), _translate("MainWindow", "Graph"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.DtataTable), _translate("MainWindow", "Table"))
 
-    def KeithleyConnect(self,deviceName, address):
+    
+    def keithleyConnect(self,deviceName, address):
      
         rm = pyvisa.ResourceManager()
                 
@@ -299,24 +331,29 @@ class Ui_MainWindow(object):
                 self.IsConnected_2420.setStyleSheet('color: red;')
                 self.device2420 = None
 
-    
-    def KeithleySweep(self):
+    def runStart(self):
+        self.startTime = time.time()
+        self.timer.start(1000)
         self.currDrainVolt = self.RS_2420_VStart.value()
         self.currGateVolt = self.RS_2635b_VStart.value()
+        self.gateStep = self.RS_2635b_VStep.value()
+        self.drainStep = self.RS_2420_VStep.value()
 
-        for v in range(self.RS_2420_VStart.value(), self.RS_2420_VStop.value() + 1,self.RS_2420_VStep.value()):
-            self.currTime +=1
-            try:
-                self.Vd.append(v)
-                self.time.append(self.currTime)
-                self.plot_graph.plot(self.time, self.Vd)
+    def updateData(self):
+        self.currentTime = time.time() - self.startTime
+        self.currGateVolt += self.drainStep
+        self.currDrainVolt += self.gateStep
+        
+        try:
+            self.Vd.append(self.currGateVolt)
+            self.times.append(self.currTime)
+            self.curve.setData(self.times, self.temperatures)
+            self.scatter.setData(self.times, self.temperatures)
 
-            except Exception as e:
+        except Exception as e:
                 
-                print(f"{e}")
+            print(f"{e}")
             
-            time.sleep(1)
-
 
 if __name__ == "__main__":
     import sys
