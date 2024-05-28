@@ -7,11 +7,30 @@
 
 
 from PyQt6 import QtCore, QtGui, QtWidgets
-#from pyqtGraphTest import SweepDataPlot
 import pyqtgraph as pg
+import pyvisa
+from functools import partial
+import numpy as np
+import time 
 
 class Ui_MainWindow(object):
+
+    device2420 = None
+    device2635b = None
+
+    currDrainVolt = 0
+    currGateVolt = 0
+    currTime = 0
+    gateStep = 0
+    drainStep = 0
+
+    Vd = []
+    Vg = []
+    C = []
+    time = []
+
     def setupUi(self, MainWindow):
+       
 
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(1058, 536)
@@ -42,14 +61,18 @@ class Ui_MainWindow(object):
         self.label_2 = QtWidgets.QLabel(parent=self.keithley2635b)
         self.label_2.setGeometry(QtCore.QRect(10, 60, 101, 21))
         self.label_2.setObjectName("label_2")
+        
         self.CurrentLimit_2635b = QtWidgets.QDoubleSpinBox(parent=self.keithley2635b)
         self.CurrentLimit_2635b.setGeometry(QtCore.QRect(120, 60, 51, 22))
         self.CurrentLimit_2635b.setProperty("value", 0.1)
         self.CurrentLimit_2635b.setObjectName("CurrentLimit_2635b")
+        
         self.IsConnected_2635b = QtWidgets.QLabel(parent=self.keithley2635b)
-        self.IsConnected_2635b.setGeometry(QtCore.QRect(70, 130, 50, 16))
+        self.IsConnected_2635b.setGeometry(QtCore.QRect(0, 130, 190, 16))
         self.IsConnected_2635b.setText("")
         self.IsConnected_2635b.setObjectName("IsConnected_2635b")
+        self.IsConnected_2635b.setFont(font)
+       
         self.connectBt_2635b = QtWidgets.QPushButton(parent=self.keithley2635b)
         self.connectBt_2635b.setGeometry(QtCore.QRect(60, 100, 75, 24))
         self.connectBt_2635b.setObjectName("connectBt_2635b")
@@ -88,10 +111,13 @@ class Ui_MainWindow(object):
         font.setFamily("Arial")
         self.ConnectBt_2420.setFont(font)
         self.ConnectBt_2420.setObjectName("ConnectBt_2420")
+        
         self.IsConnected_2420 = QtWidgets.QLabel(parent=self.Keithley2420)
-        self.IsConnected_2420.setGeometry(QtCore.QRect(70, 130, 50, 16))
+        self.IsConnected_2420.setGeometry(QtCore.QRect(0, 130, 190, 16))
         self.IsConnected_2420.setText("")
         self.IsConnected_2420.setObjectName("IsConnected_2420")
+        self.IsConnected_2420.setFont(font)
+        
         self.KS_TabWidget.addTab(self.Keithley2420, "")
         self.KS_Label_2 = QtWidgets.QLabel(parent=self.centralwidget)
         self.KS_Label_2.setGeometry(QtCore.QRect(50, 240, 111, 21))
@@ -164,7 +190,7 @@ class Ui_MainWindow(object):
         self.RunButton = QtWidgets.QPushButton(parent=self.centralwidget)
         self.RunButton.setGeometry(QtCore.QRect(50, 450, 81, 24))
         self.RunButton.setObjectName("RunButton")
-        self.RunButton.clicked.connect(lambda = s) 
+        
         self.AbortButton = QtWidgets.QPushButton(parent=self.centralwidget)
         self.AbortButton.setGeometry(QtCore.QRect(144, 450, 81, 24))
         self.AbortButton.setObjectName("AbortButton")
@@ -196,9 +222,6 @@ class Ui_MainWindow(object):
     
         self.plot_graph = pg.PlotWidget()
         #self.canvas = SweepDataPlot()
-        self.time = [0]
-        self.temperature = [0]
-        self.plot_graph.plot(self.time, self.temperature)
             
         self.gridLayoutWidget = QtWidgets.QWidget(parent=self.centralwidget)
         self.gridLayoutWidget.setGeometry(QtCore.QRect(280, 10, 751, 481))
@@ -222,6 +245,10 @@ class Ui_MainWindow(object):
         self.RS_TabWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
+        self.RunButton.clicked.connect(self.KeithleySweep)
+        self.ConnectBt_2420.clicked.connect(lambda : self.KeithleyConnect("2420", 24))
+        self.connectBt_2635b.clicked.connect(partial(self.KeithleyConnect, "2635b", 26))
+        
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "MainWindow"))
@@ -245,6 +272,50 @@ class Ui_MainWindow(object):
         self.RS_TabWidget.setTabText(self.RS_TabWidget.indexOf(self.Keithley2420_2), _translate("MainWindow", "Keithley2420"))
         self.RunButton.setText(_translate("MainWindow", "Run"))
         self.AbortButton.setText(_translate("MainWindow", "Abort"))
+
+    def KeithleyConnect(self,deviceName, address):
+     
+        rm = pyvisa.ResourceManager()
+                
+        if deviceName == "2635b":
+
+            try:
+                self.device2635b = rm.open_resource(f'GPIB::{address}::INSTR')
+                self.IsConnected_2635b.setStyleSheet('color: black;')
+                self.IsConnected_2635b.setText(f"Connected to {address}")
+            except Exception as e:
+                self.IsConnected_2635b.setText(f"Failed to connect: {e}")
+                self.IsConnected_2635b.setStyleSheet('color: red;')
+                self.device2635b = None
+
+        elif deviceName == "2420":
+
+            try:
+                self.device2420 = rm.open_resource(f'GPIB::{address}::INSTR')
+                self.IsConnected_2420.setStyleSheet('color: black;')
+                self.IsConnected_2420.setText(f"Connected to {address}")
+            except Exception as e:
+                self.IsConnected_2420.setText(f"Failed to connect: {e}")
+                self.IsConnected_2420.setStyleSheet('color: red;')
+                self.device2420 = None
+
+    
+    def KeithleySweep(self):
+        self.currDrainVolt = self.RS_2420_VStart.value()
+        self.currGateVolt = self.RS_2635b_VStart.value()
+
+        for v in range(self.RS_2420_VStart.value(), self.RS_2420_VStop.value() + 1,self.RS_2420_VStep.value()):
+            self.currTime +=1
+            try:
+                self.Vd.append(v)
+                self.time.append(self.currTime)
+                self.plot_graph.plot(self.time, self.Vd)
+
+            except Exception as e:
+                
+                print(f"{e}")
+            
+            time.sleep(1)
 
 
 if __name__ == "__main__":
