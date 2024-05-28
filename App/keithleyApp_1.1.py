@@ -17,6 +17,7 @@ import time
 class Ui_MainWindow(object):
     def __init__(self):
         super().__init__()
+        
         self.device2420 = None
         self.device2635b = None
 
@@ -31,7 +32,7 @@ class Ui_MainWindow(object):
 
         self.Vd = []
         self.Vg = []
-        self.Currents = []
+        self.drainCurrents = []
         self.times = []
 
         self.timer = QTimer()
@@ -240,12 +241,13 @@ class Ui_MainWindow(object):
         self.graphData.setBackground('w')
         self.graphData.setLabel('left', 'Currents (A)')
         self.graphData.setLabel('bottom', 'Gate Voltage (V)')
-        self.graphData.showGrid(x=True, y=True, alpha = 0.3)
-        self.graphData.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))  # y축 라인을 검은색으로 설정
-        self.graphData.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))  # x축 라인을 검은색으로 설정
-        self.curve = self.plotWidget.plot(self.times, self.temperatures, pen=pg.mkPen(color=(255, 0, 0), width=2))  # 데이터 라인을 빨간색으로 설정
+        self.graphData.showGrid(x=True, y=True, alpha = 0.1)
+        self.graphData.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))
+        self.graphData.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))
+        
+        self.curve = self.graphData.plot(self.times, self.Vd, pen=pg.mkPen(color=(255, 0, 0), width=2))
         self.scatter = pg.ScatterPlotItem(size=10, brush=pg.mkBrush(255, 0, 0), pen=pg.mkPen(None))
-        self.plotWidget.addItem(self.scatter)
+        self.graphData.addItem(self.scatter)
 
         self.gridLayout_graph.addWidget(self.graphData)
         
@@ -277,6 +279,8 @@ class Ui_MainWindow(object):
         self.RunButton.clicked.connect(self.runStart)
         self.ConnectBt_2420.clicked.connect(lambda : self.keithleyConnect("2420", 24))
         self.connectBt_2635b.clicked.connect(partial(self.keithleyConnect, "2635b", 26))
+        self.AbortButton.clicked.connect(self.abort)
+
         
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -303,7 +307,6 @@ class Ui_MainWindow(object):
         self.AbortButton.setText(_translate("MainWindow", "Abort"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.DataGraph), _translate("MainWindow", "Graph"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.DtataTable), _translate("MainWindow", "Table"))
-
     
     def keithleyConnect(self,deviceName, address):
      
@@ -339,16 +342,19 @@ class Ui_MainWindow(object):
         self.gateStep = self.RS_2635b_VStep.value()
         self.drainStep = self.RS_2420_VStep.value()
 
+    def abort(self):
+        self.timer.stop()
+
     def updateData(self):
-        self.currentTime = time.time() - self.startTime
+        self.currTime = time.time() - self.startTime
         self.currGateVolt += self.drainStep
         self.currDrainVolt += self.gateStep
         
         try:
             self.Vd.append(self.currGateVolt)
             self.times.append(self.currTime)
-            self.curve.setData(self.times, self.temperatures)
-            self.scatter.setData(self.times, self.temperatures)
+            self.curve.setData(self.times, self.Vd)
+            self.scatter.setData(self.times, self.Vd)
 
         except Exception as e:
                 
