@@ -8,7 +8,7 @@
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWidgets import QApplication, QMainWindow
-from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor
 from ctypes.wintypes import HANDLE, HICON
 from ctypes import windll
@@ -362,8 +362,10 @@ class Ui_MainWindow(object):
 
             try:
                 self.device2635b = rm.open_resource(f'GPIB::{address}::INSTR')
-                self.IsConnected_2635b.setStyleSheet('color: black;')
+                self.IsConnected_2635b.setStyleSheet('color: green;')
                 self.IsConnected_2635b.setText(f"Connected to {address}")
+                time.sleep(1)
+                self.IsConnected_2635b.setText("")
                 self.device2420.write('smua.source.func = smua.OUTPUT_DCV')# 전압 source mode
                 self.device2420.write('smua.measure.func = smua.FUNC_DCI') # 전류 measure mode
                 self.device2635b.write(f'smua.source.limiti = {self.CurrentLimit_2635b.value()}') # 전류 한계 설정
@@ -378,8 +380,8 @@ class Ui_MainWindow(object):
 
             try:
                 self.device2420 = rm.open_resource(f'GPIB::{address}::INSTR')
-                self.IsConnected_2420.setStyleSheet('color: black;')
-                self.IsConnected_2420.setText(f"Connected to {address}")
+                self.IsConnected_2420.setStyleSheet('color: green;')
+                self.IsConnected_2420.setText(f"Connected to {address}")         
                 print(self.device2420.query('*IDN?'))
                 
                 self.device2420.write(':SOUR:FUNC VOLT')# 전압 source mode
