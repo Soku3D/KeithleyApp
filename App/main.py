@@ -1,20 +1,13 @@
-
 from ui import Ui_MainWindow
-from ui import SMUDevice
-from PyQt6 import QtCore, QtGui, QtWidgets
-from PyQt6.QtWidgets import QApplication, QMainWindow
-from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPalette, QIcon, QPixmap, QPainter, QColor
+from PyQt6 import QtWidgets
+from PyQt6.QtWidgets import QMainWindow
+
+from PyQt6.QtGui import QIcon, QPixmap
 from ctypes.wintypes import HANDLE, HICON
 from ctypes import windll
-from functools import partial
 
 import os
 import sys
-import numpy as np
-import time 
-import pyqtgraph as pg
-import pyvisa
 
 class KeithleyMainWindow(QMainWindow):
     def __init__(self):
