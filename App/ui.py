@@ -13,19 +13,41 @@ import pyvisa
 import time
 import sys
 import os
+import pandas as pd
 pg.setConfigOptions(antialias=True)
-class IVThread(QtCore.QThread):
-    data = QtCore.pyqtSignal(list,list)
 
+class CommonSettings:
+    sweepPoint = 0
+    sourceDelay = 1
+    Repeate = 1
+    startTime = 0
+    currTime = 0
+    def __init__(self):
+        super().__init__()
+
+    def update(self, p, d, r):
+        self.sweepPoint = p
+        self.sourceDelay = d
+        self.Repeate = r
+
+class IVThread(QtCore.QThread):
+    data = QtCore.pyqtSignal(list,list,float)
+    commonSetting = None
     devices = {}
+
+    def updateSettings(self, settings):
+        self.commonSetting = settings
+
     def setDevice(self, device, idx):
         if idx==0: # 2420
             self.devices["drain"] = device
         elif idx==1: # 2635b
             self.devices["gate"] = device
 
-    def run(self):
+    def run(self): 
         try:
+            self.startTime = time.perf_counter()
+            print(self.commonSetting.sweepPoint)
             #keithley 설정
             #self.device0.setKeithley()
             #self.device1.setKeithley()
@@ -40,12 +62,15 @@ class IVThread(QtCore.QThread):
             for bias in biasStepList:
                 i=0
                 for drainVolt in SweepList:
+                    self.currTime = time.perf_counter()
+                    elapesedTime = self.currTime- self.startTime
                     #measure Currents
                     vs.append(drainVolt)
                     currents.append(test[i])
-                    self.data.emit(vs,currents)
                     time.sleep(1)
                     i+=1
+                    self.data.emit(vs,currents, elapesedTime)
+                    
 
         except Exception as e:
             print(f"{e}")
@@ -55,13 +80,17 @@ class IVThread(QtCore.QThread):
             return True
         else:
             return False
+        
 class SMUDevice(object):
     device = None
     deviceName = ""
-    mode = "Bias"
+
+    # 0:LinearSweep | 1:Bias | 2:Step
+    mode = 0 
+    
     voltRange = 0
     currentsRange = 0
-    currentsLimit = 0.1
+    currentLimit = 0.1
     
     startVolt = 0
     stopVolt = 0
@@ -75,6 +104,7 @@ class SMUDevice(object):
         super().__init__()
         self.deviceName  = deviceName
         #self.device = d
+
     def setValues(self, startV, stopV, stepV):
         self.startVolt = startV
         self.stopVolt = stopV
@@ -82,9 +112,31 @@ class SMUDevice(object):
 
     def setKeithley(self):
         if self.deviceName == "2420":
-            self.device.write(f":SENS:PROT {self.currentsLimit}")
+            self.device.write(f":SENS:PROT {self.currentLimit}")
         if self.deviceName == "2635b":
-            self.device.write(f"smua.limiti =  {self.currentsLimit}")
+            self.device.write(f"smua.limiti =  {self.currentLimit}")
+
+    def sourcingVoltage(self, v):
+        if self.deviceName == "2420":
+            self.device.write(f":SOUR:VORT {v}")
+        elif self.deviceName == "2635b":
+            self.device.write(f"smua.source.levelV = {v}")
+
+    # sourcing measure function 지정
+    def setFunction(self):
+        if self.deviceName == "2420":
+            self.device.write(":SOUR:FUNC VOLT")
+            self.device.write(':SENS:FUNC "CURR"')
+        elif self.deviceName == "2635b":
+            self.device.write("smua.source.func = smua.OUTPUT_DCVOLTS")
+
+    def outputOn(self):
+        if self.deviceName == "2420":
+            self.device.write(":OUTP ON")
+        elif self.deviceName == "2635b":
+            self.device.write("smua.source.output = smua.OUTPUT_ON")
+
+
 
 
 class Ui_MainWindow(object):
@@ -103,7 +155,11 @@ class Ui_MainWindow(object):
         
         #Thread 설정
         self.thread = IVThread()
-        self.thread.data.connect(self.updateGraph)
+        self.thread.data.connect(self.updateTabs)
+        
+        # Common Setting 생성
+        self.commonSet = CommonSettings()
+        self.thread.updateSettings(self.commonSet)
 
         # Resources 경로 설정
         exe_path = sys.argv[0]
@@ -216,6 +272,7 @@ class Ui_MainWindow(object):
         self.stepvSpinBox.setEnabled(True)
         self.stepvSpinBox.setStyleSheet("background-color: white;")
         self.stepvSpinBox.setObjectName("stepvSpinBox")
+        self.stepvSpinBox.setEnabled(False)
         self.startVformLayout.setWidget(4, QtWidgets.QFormLayout.ItemRole.FieldRole, self.stepvSpinBox)
         self.stopvSpinBox = QtWidgets.QSpinBox(parent=self.formLayoutWidget_3)
         self.stopvSpinBox.setStyleSheet("background-color: white;")
@@ -391,12 +448,55 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.settingTab, "")
         self.tableTab = QtWidgets.QWidget()
         self.tableTab.setObjectName("tableTab")
+        
         self.gridLayoutWidget = QtWidgets.QWidget(parent=self.tableTab)
-        self.gridLayoutWidget.setGeometry(QtCore.QRect(-1, -1, 951, 641))
+        self.gridLayoutWidget.setGeometry(QtCore.QRect(0, 0, 951, 580))
         self.gridLayoutWidget.setObjectName("gridLayoutWidget")
         self.tableGridLayout = QtWidgets.QGridLayout(self.gridLayoutWidget)
         self.tableGridLayout.setContentsMargins(0, 0, 0, 0)
         self.tableGridLayout.setObjectName("tableGridLayout")
+
+        # Table 추가
+        self.table = QtWidgets.QTableWidget()
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Time (s)", "Drain Voltage (V)", "Drain Current (V)"])
+        self.table.setColumnWidth(0,316)
+        self.table.setColumnWidth(1,316)
+        self.table.setColumnWidth(2,316)
+        self.table.setStyleSheet("""
+            QTableWidget {
+                background-color: #f0f0f0;
+                gridline-color: #d0d0d0;
+                font-size: 14px;
+            }
+            QTableWidget::item {
+                padding: 10px;
+            }
+        """)
+        self.table.horizontalHeader().setStyleSheet("""
+            QHeaderView::section {
+                background-color: #404040;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 16px;
+                border: 1px solid #6c6c6c;
+                padding: 5px;
+            }
+        """)
+        self.table.verticalHeader().setStyleSheet("""
+            QHeaderView::section {
+                background-color: #404040;
+                color: #ffffff;
+                font-weight: bold;
+                font-size: 16px;
+                 border: 1px solid #6c6c6c;
+                padding: 5px;
+            }
+        """)
+
+        self.tableGridLayout.addWidget(self.table)
+        
+
         self.tabWidget.addTab(self.tableTab, "")
         self.graphTab = QtWidgets.QWidget()
         self.graphTab.setObjectName("graphTab")
@@ -407,6 +507,7 @@ class Ui_MainWindow(object):
         self.graphGridLayout.setContentsMargins(0, 0, 0,0)
         self.graphGridLayout.setObjectName("graphGridLayout")
         
+        # Graph 추가
         pg.setConfigOptions(antialias=True)
         self.plotWidget = pg.PlotWidget()
         
@@ -415,19 +516,12 @@ class Ui_MainWindow(object):
         self.plotWidget.setLabel('bottom', 'Drain Voltage V<sub>d</sub> (V)', color='k', size='17pt')  
         self.plotWidget.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))  # y축 라인을 검은색으로 설정
         self.plotWidget.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))  # x축 라인을 검은색으로 설정
-
-        
         m_pen = QtGui.QPen(QtGui.QColor(255,0,0))
         m_pen.setCosmetic(True) 
         m_pen.setWidth(2) 
         m_pen.setStyle(QtCore.Qt.PenStyle.SolidLine)
-      
-        self.curve = self.plotWidget.plot([], [], pen=m_pen, width=2,symbolBrush =(255, 0, 0), symbol='s')  
-        #self.scatter = pg.ScatterPlotItem(size=10, brush=pg.mkBrush(255, 0, 0), pen=m_pen)
-        #self.plotWidget.addItem(self.scatter)
-        self.graphGridLayout.addWidget(self.plotWidget)
-
-       
+        self.curve = self.plotWidget.plot([], [], pen=m_pen, width=2,symbolBrush =(255, 0, 0), symbol='s')
+        self.graphGridLayout.addWidget(self.plotWidget)    
         
         self.tabWidget.addTab(self.graphTab, "")
         self.RunButton = QtWidgets.QPushButton(parent=self.centralwidget)
@@ -445,6 +539,24 @@ class Ui_MainWindow(object):
         
         savePath = self.resourcePath + "/Save.png"
         self.saveButton.setStyleSheet(f"border-image : url({savePath});")
+
+
+        self.captureButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.captureButton.setGeometry(QtCore.QRect(130, 5, 50, 50))
+        self.captureButton.setText("")
+        self.captureButton.setObjectName("captureButton")
+        
+        capturePath = self.resourcePath + "/Capture.png"
+        self.captureButton.setStyleSheet(f"border-image : url({capturePath});")
+
+        self.captureGraphButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.captureGraphButton.setGeometry(QtCore.QRect(195, 5, 50, 50))
+        self.captureGraphButton.setText("")
+        self.captureGraphButton.setObjectName("captureGraphButton")
+        
+        capturGraphePath = self.resourcePath + "/CaptureGraph.png"
+        self.captureGraphButton.setStyleSheet(f"border-image : url({capturGraphePath});")
+
 
         self.widget_4 = QtWidgets.QWidget(parent=self.centralwidget)
         self.widget_4.setGeometry(QtCore.QRect(10, 60, 281, 611))
@@ -503,7 +615,15 @@ class Ui_MainWindow(object):
         for addr in range(30):
             self.addressComboBox.addItem(f"{addr}")
 
-        self.sourceRange2420List = ["1 V", "2 V", "3 V"]
+        self.sourceRangeLists = ["200 mV", "2 V", "20 V", "200 V"]
+        self.measureRangeLists2420 = [ "1 µA", "10 µA","100 µA", 
+                                       "1 mA","10 mA","100 mA",
+                                       "1 A"]
+        self.measureRangeLists2635b = ["100 pA", 
+                                       "1 nA", "10 nA", "100 nA",
+                                       "1 µA", "10 µA","100 µA", 
+                                       "1 mA","10 mA","100 mA",
+                                       "1 A", "1.5 A"]
 
         
         self.formLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.addressComboBox)
@@ -565,6 +685,10 @@ class Ui_MainWindow(object):
         self.smu2635bButton.clicked.connect(lambda : self.loadSettings(self.device2635b, 1))
         self.saveSettingsBt.clicked.connect(lambda : self.saveSettings(self.currSetDevice))
         self.RunButton.clicked.connect(self.runStart)
+        self.modeComboBox.currentIndexChanged.connect(self.updateMode)
+        self.saveButton.clicked.connect(lambda: self.saveToExcel(MainWindow))
+        self.captureButton.clicked.connect(lambda: self.captureScreen(MainWindow))
+        self.captureGraphButton.clicked.connect(lambda: self.captureGraph(MainWindow))
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -572,8 +696,8 @@ class Ui_MainWindow(object):
         self.label_4.setText(_translate("MainWindow", "Mode"))
         self.label_5.setText(_translate("MainWindow", "Range"))
         self.label_6.setText(_translate("MainWindow", "Limit (A)"))
-        self.modeComboBox.setItemText(0, _translate("MainWindow", "Bias"))
-        self.modeComboBox.setItemText(1, _translate("MainWindow", "Sweep"))
+        self.modeComboBox.setItemText(0, _translate("MainWindow", "Linear Sweep"))
+        self.modeComboBox.setItemText(1, _translate("MainWindow", "Bias"))
         self.modeComboBox.setItemText(2, _translate("MainWindow", "Step"))
         self.checkBox.setText(_translate("MainWindow", "Dual Sweep"))
         self.label_14.setText(_translate("MainWindow", "Source"))
@@ -626,9 +750,11 @@ class Ui_MainWindow(object):
                 
             except Exception as e:
                 self.smu2420Button.setText(f"2420 - {self.addr2420}\nFailed to Connect")
-                self.device2420 = SMUDevice("2420") #TODO : NONE 으로 변경
+                self.device2420 = None
+
+                self.device2420 = SMUDevice("2420") #TODO : DEL
+                self.smu2420Button.setText(f"2420 - {self.addr2420}\nConnected") #TODO DEL
                 self.thread.setDevice(self.device2420, 0)  #TODO DEL
-                print(f"device2420ID : {id(self.device2420)}")
 
         elif idx == 1:  # device 2635b
             self.addr2635b
@@ -644,12 +770,18 @@ class Ui_MainWindow(object):
                 self.thread.setDevice(self.device2635b, 1) 
             except Exception as e:
                 self.smu2635bButton.setText(f"2635b - {self.addr2635b}\nFailed to connect")
-                self.device2635b = SMUDevice("2635b") #TODO : NONE 으로 변경
+                self.device2635b = None
+
+                self.device2635b = SMUDevice("2365b") #TODO : DEL
+                self.smu2635bButton.setText(f"2635b - {self.addr2635b}\nConnected") #TODO DEL
                 self.thread.setDevice(self.device2635b, 1)  #TODO DEL
 
             
     def saveSettings(self, idx):
-        
+        self.commonSet.update(self.SSPpointsSpinBox.value(),
+                            self.delaySpinBox.value(),
+                            self.repeatSpinBox.value())
+        self.thread.updateSettings(self.commonSet)
         if idx==0:
             self.device2420.setValues(
                 self.startvSpinBox.value(),
@@ -662,25 +794,110 @@ class Ui_MainWindow(object):
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value()
             )
-        
+    
+    def SetCommonSettings(self, settings):
+
+        self.SSPpointsSpinBox.setValue(settings.sweepPoint)
+        self.delaySpinBox.setValue(settings. sourceDelay)
+        self.repeatSpinBox.setValue(settings.Repeate)
+
     # device 값을 load 한다
     def loadSettings(self, device, idx):
+        self.SetCommonSettings(self.commonSet)
         self.currSetDevice = idx
         self.startvSpinBox.setValue(device.startVolt)
         self.stopvSpinBox.setValue(device.stopVolt)
         self.stepvSpinBox.setValue(device.stepVolt)
-        if idx == 0: 
+
+        if idx == 0:  # 2420
+
             self.ModelLabel.setText("Model : 2420")
             self.sourceRangeComboBox.clear()
-            self.sourceRangeComboBox.addItems(self.sourceRange2420List)
-        elif idx==1:
+            self.sourceRangeComboBox.addItems(self.sourceRangeLists)
+            self.measureRangeComboBox.clear()
+            self.measureRangeComboBox.addItems(self.measureRangeLists2420)
+        elif idx==1: # 2635b
+
+            self.sourceRangeComboBox.clear()
+            self.sourceRangeComboBox.addItems(self.sourceRangeLists)
+            self.measureRangeComboBox.clear()
+            self.measureRangeComboBox.addItems(self.measureRangeLists2635b)
             self.ModelLabel.setText("Model : 2635b")
 
     def runStart(self):
         if self.thread.threadReady() :
             self.thread.start()
 
-    def updateGraph(self, list1, list2):
-        print(list1)
-        print(list2)
-        self.curve.setData(list1, list2)
+    def updateTabs(self, volts, currs, time):
+        print(time)
+        print(volts)
+        print(currs)
+        self.curve.setData(volts, currs)
+        row_position = self.table.rowCount()
+        self.table.insertRow(row_position)
+            
+        self.table.setItem(row_position, 0, QtWidgets.QTableWidgetItem(str(time)))
+        self.table.setItem(row_position, 1,  QtWidgets.QTableWidgetItem(str(volts[row_position])))
+        self.table.setItem(row_position, 2,  QtWidgets.QTableWidgetItem(str(currs[row_position])))
+
+    def updateMode(self):
+        mode = self.modeComboBox.currentIndex()
+        if mode == 0 :
+            self.startvSpinBox.setEnabled(True)
+            self.stopvSpinBox.setEnabled(True)
+        if mode == 1 :
+            self.startvSpinBox.setEnabled(True)
+            self.stopvSpinBox.setEnabled(False)
+        if mode == 2 :
+            self.startvSpinBox.setEnabled(True)
+            self.stopvSpinBox.setEnabled(True)
+
+    #self.table 내에 있는 데이터를 저장
+    def saveToExcel(self, window):
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(window, "Save File", "", "Excel Files (*.xlsx);;All Files (*)")
+        
+        if path:
+            data = []
+            for row in range(self.table.rowCount()):
+                row_data = []
+                for column in range(self.table.columnCount()):
+                    item = self.table.item(row, column)
+                    row_data.append(item.text() if item else "")
+                data.append(row_data)
+                
+            df = pd.DataFrame(data, columns=["Time (s)", "Drain Vol (V)", "Drina Current (V)"])
+            df.to_excel(path, index=False)
+
+    # 현재 윈도우의 내용을 캡처
+    def captureScreen(self, winodow):
+        
+        screenshot = winodow.grab()
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, 
+                                                   "Save Screenshot", 
+                                                   "", 
+                                                   "PNG Files (*.png);;All Files (*)")
+        if file_name:
+            screenshot.save(file_name, "png")
+
+    
+    # 현재 윈도우의 내용을 캡처
+    def captureScreen(self, window):
+        
+        screenshot = window.grab()
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(window, 
+                                                   "Save Screenshot", 
+                                                   "", 
+                                                   "PNG Files (*.png);;All Files (*)")
+        if file_name:
+            screenshot.save(file_name, "png")
+
+    # 현재 그래프 내용을 캡처
+    def captureGraph(self, window):
+        
+        screenshot = self.plotWidget.grab()
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(window, 
+                                                   "Save Screenshot", 
+                                                   "", 
+                                                   "PNG Files (*.png);;All Files (*)")
+        if file_name:
+            screenshot.save(file_name, "png")
