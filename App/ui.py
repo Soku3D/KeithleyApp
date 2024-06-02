@@ -7,7 +7,6 @@
 
 
 from PyQt6 import QtCore, QtGui, QtWidgets
-from graphWidget import Graph
 import pyqtgraph as pg
 import pyvisa
 import time
@@ -38,6 +37,7 @@ class IVThread(QtCore.QThread):
     def updateSettings(self, settings):
         self.commonSetting = settings
 
+    # index-> 0 : 2420 | 1 : 2635b
     def setDevice(self, device, idx):
         if idx==0: # 2420
             self.devices["drain"] = device
@@ -96,14 +96,10 @@ class SMUDevice(object):
     stopVolt = 0
     stepVolt = 0
 
-    # def __init__(self, d):
-    #     super().__init__()
-    #     
-    #     self.device = d
-    def __init__(self, deviceName):
+    def __init__(self, deviceName, d):
         super().__init__()
         self.deviceName  = deviceName
-        #self.device = d
+        self.device = d
 
     def setValues(self, startV, stopV, stepV):
         self.startVolt = startV
@@ -167,12 +163,23 @@ class Ui_MainWindow(object):
         self.resourcePath = os.path.join(exe_dir,"Resources")
         self.resourcePath = self.resourcePath.replace("\\","/")
 
+     
         self.centralwidget = QtWidgets.QWidget(parent=MainWindow)
         self.centralwidget.setObjectName("centralwidget")
-        self.tabWidget = QtWidgets.QTabWidget(parent=self.centralwidget)
-        self.tabWidget.setGeometry(QtCore.QRect(300, 60, 961, 611))
+        self.mainLayout = QtWidgets.QVBoxLayout()
+        self.centralwidget.setLayout(self.mainLayout)
+        
+        self.topLayout = QtWidgets.QHBoxLayout()
+        self.bottomLayout = QtWidgets.QHBoxLayout()
+        self.mainLayout.addLayout(self.topLayout)
+        self.mainLayout.addLayout(self.bottomLayout)
+
+        #self.tabWidget = QtWidgets.QTabWidget(parent=self.centralwidget)
+        self.tabWidget = QtWidgets.QTabWidget()
+        #self.tabWidget.setGeometry(QtCore.QRect(300, 60, 961, 611))
         self.tabWidget.setStyleSheet("background-color: white;")
         self.tabWidget.setObjectName("tabWidget")
+        
         self.settingTab = QtWidgets.QWidget()
         self.settingTab.setObjectName("settingTab")
         font = QtGui.QFont()
@@ -277,10 +284,13 @@ class Ui_MainWindow(object):
         self.stopvSpinBox = QtWidgets.QSpinBox(parent=self.formLayoutWidget_3)
         self.stopvSpinBox.setStyleSheet("background-color: white;")
         self.stopvSpinBox.setObjectName("stopvSpinBox")
+        self.stopvSpinBox.setMinimum(-100)
         self.startVformLayout.setWidget(2, QtWidgets.QFormLayout.ItemRole.FieldRole, self.stopvSpinBox)
         self.startvSpinBox = QtWidgets.QSpinBox(parent=self.formLayoutWidget_3)
         self.startvSpinBox.setStyleSheet("background-color: white;")
         self.startvSpinBox.setObjectName("StartvSpinBox")
+        self.startvSpinBox.setMinimum(-100)
+        self.startvSpinBox.setMaximum(100)
         self.startVformLayout.setWidget(0, QtWidgets.QFormLayout.ItemRole.FieldRole, self.startvSpinBox)
         self.label_12 = QtWidgets.QLabel(parent=self.formLayoutWidget_3)
         self.label_12.setText("")
@@ -428,6 +438,8 @@ class Ui_MainWindow(object):
         self.SSPpointsSpinBox.setGeometry(QtCore.QRect(140, 70, 101, 31))
         self.SSPpointsSpinBox.setStyleSheet("background-color: white;")
         self.SSPpointsSpinBox.setObjectName("SSPpointsSpinBox")
+        self.SSPpointsSpinBox.setValue(1)
+        self.SSPpointsSpinBox.setMinimum(1)
         self.delaySpinBox = QtWidgets.QSpinBox(parent=self.widget_3)
         self.delaySpinBox.setGeometry(QtCore.QRect(140, 150, 101, 31))
         self.delaySpinBox.setStyleSheet("background-color: white;")
@@ -448,13 +460,14 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.settingTab, "")
         self.tableTab = QtWidgets.QWidget()
         self.tableTab.setObjectName("tableTab")
-        
-        self.gridLayoutWidget = QtWidgets.QWidget(parent=self.tableTab)
-        self.gridLayoutWidget.setGeometry(QtCore.QRect(0, 0, 951, 580))
-        self.gridLayoutWidget.setObjectName("gridLayoutWidget")
-        self.tableGridLayout = QtWidgets.QGridLayout(self.gridLayoutWidget)
-        self.tableGridLayout.setContentsMargins(0, 0, 0, 0)
-        self.tableGridLayout.setObjectName("tableGridLayout")
+        self.tableTabLayout = QtWidgets.QVBoxLayout()
+        self.tableTab.setLayout(self.tableTabLayout)
+        # self.gridLayoutWidget = QtWidgets.QWidget(parent=self.tableTab)
+        # self.gridLayoutWidget.setGeometry(QtCore.QRect(0, 0, 951, 580))
+        # self.gridLayoutWidget.setObjectName("gridLayoutWidget")
+        # self.tableGridLayout = QtWidgets.QGridLayout(self.gridLayoutWidget)
+        # self.tableGridLayout.setContentsMargins(0, 0, 0, 0)
+        # self.tableGridLayout.setObjectName("tableGridLayout")
 
         # Table 추가
         self.table = QtWidgets.QTableWidget()
@@ -494,19 +507,15 @@ class Ui_MainWindow(object):
             }
         """)
 
-        self.tableGridLayout.addWidget(self.table)
+        self.tableTabLayout.addWidget(self.table)
         
 
         self.tabWidget.addTab(self.tableTab, "")
         self.graphTab = QtWidgets.QWidget()
         self.graphTab.setObjectName("graphTab")
-        self.gridLayoutWidget_2 = QtWidgets.QWidget(parent=self.graphTab)
-        self.gridLayoutWidget_2.setGeometry(QtCore.QRect(0, 0, 950, 580))
-        self.gridLayoutWidget_2.setObjectName("gridLayoutWidget_2")
-        self.graphGridLayout = QtWidgets.QGridLayout(self.gridLayoutWidget_2)
-        self.graphGridLayout.setContentsMargins(0, 0, 0,0)
-        self.graphGridLayout.setObjectName("graphGridLayout")
-        
+        self.graphTabLayout = QtWidgets.QVBoxLayout()
+        self.graphTab.setLayout(self.graphTabLayout)
+            
         # Graph 추가
         pg.setConfigOptions(antialias=True)
         self.plotWidget = pg.PlotWidget()
@@ -521,67 +530,95 @@ class Ui_MainWindow(object):
         m_pen.setWidth(2) 
         m_pen.setStyle(QtCore.Qt.PenStyle.SolidLine)
         self.curve = self.plotWidget.plot([], [], pen=m_pen, width=2,symbolBrush =(255, 0, 0), symbol='s')
-        self.graphGridLayout.addWidget(self.plotWidget)    
+        self.graphTabLayout.addWidget(self.plotWidget)    
         
         self.tabWidget.addTab(self.graphTab, "")
-        self.RunButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.RunButton.setGeometry(QtCore.QRect(3, 3, 60, 60))
+        #self.RunButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.RunButton = QtWidgets.QPushButton()
+        #self.RunButton.setGeometry(QtCore.QRect(3, 3, 60, 60))
+        self.RunButton.setMinimumSize(60,60)
         self.RunButton.setText("")
         self.RunButton.setObjectName("RunButton")
         
         runPath = self.resourcePath + "/Run.png"        
         self.RunButton.setStyleSheet(f"border-image : url({runPath});")
         
-        self.saveButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.saveButton.setGeometry(QtCore.QRect(70, 10, 45, 40))
+        self.saveButton = QtWidgets.QPushButton()
+        #self.saveButton.setGeometry(QtCore.QRect(70, 10, 45, 40))
+        self.saveButton.setMinimumSize(45,40)
         self.saveButton.setText("")
         self.saveButton.setObjectName("saveButton")
         
         savePath = self.resourcePath + "/Save.png"
         self.saveButton.setStyleSheet(f"border-image : url({savePath});")
 
-
-        self.captureButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.captureButton.setGeometry(QtCore.QRect(130, 5, 50, 50))
+        #self.captureButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.captureButton = QtWidgets.QPushButton()
+        #self.captureButton.setGeometry(QtCore.QRect(130, 5, 50, 50))
+        self.captureButton.setMinimumSize(50,50)
         self.captureButton.setText("")
         self.captureButton.setObjectName("captureButton")
         
         capturePath = self.resourcePath + "/Capture.png"
         self.captureButton.setStyleSheet(f"border-image : url({capturePath});")
 
-        self.captureGraphButton = QtWidgets.QPushButton(parent=self.centralwidget)
-        self.captureGraphButton.setGeometry(QtCore.QRect(195, 5, 50, 50))
+        #self.captureGraphButton = QtWidgets.QPushButton(parent=self.centralwidget)
+        self.captureGraphButton = QtWidgets.QPushButton()
+        #self.captureGraphButton.setGeometry(QtCore.QRect(195, 5, 50, 50))
+        self.captureGraphButton.setMinimumSize(50,50)
         self.captureGraphButton.setText("")
         self.captureGraphButton.setObjectName("captureGraphButton")
         
         capturGraphePath = self.resourcePath + "/CaptureGraph.png"
         self.captureGraphButton.setStyleSheet(f"border-image : url({capturGraphePath});")
 
+        self.topLayout.addWidget(self.RunButton)
+        self.topLayout.addWidget(self.saveButton)
+        self.topLayout.addWidget(self.captureButton)
+        self.topLayout.addWidget(self.captureGraphButton)
+        spacer = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
+        self.topLayout.addItem(spacer)
+        
+        self.instrumentsWidget = QtWidgets.QWidget()
+        self.instrumentsWidget.setGeometry(QtCore.QRect(10, 60, 281, 611))
+        self.instrumentsWidget.setStyleSheet("background-color: #DBE7FF;")
+        self.instrumentsWidget.setObjectName("instrumentsWidget")
+        self.instrumentLayout = QtWidgets.QVBoxLayout()
+        self.instrumentsWidget.setLayout(self.instrumentLayout)
 
-        self.widget_4 = QtWidgets.QWidget(parent=self.centralwidget)
-        self.widget_4.setGeometry(QtCore.QRect(10, 60, 281, 611))
-        self.widget_4.setStyleSheet("background-color: #DBE7FF;")
-        self.widget_4.setObjectName("widget_4")
-        self.addButton = QtWidgets.QPushButton(parent=self.widget_4)
-        self.addButton.setGeometry(QtCore.QRect(100, 550, 75, 31))
+        self.bottomLayout.addWidget(self.instrumentsWidget,1)
+        self.bottomLayout.addWidget(self.tabWidget,4)
+        
+        self.addButton = QtWidgets.QPushButton()
+        self.addButton.setMinimumSize(30, 31)
+
         font = QtGui.QFont()
         font.setPointSize(11)
         font.setBold(True)
         self.addButton.setFont(font)
         self.addButton.setStyleSheet("background-color: blue;color : white;")
         self.addButton.setObjectName("addButton")
-        self.line = QtWidgets.QFrame(parent=self.widget_4)
+        
+        
+        self.instrumentLineLayout = QtWidgets.QHBoxLayout()
+
+        self.line = QtWidgets.QFrame()
         self.line.setGeometry(QtCore.QRect(0, 410, 95, 16))
         self.line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line.setObjectName("line")
-        self.line_2 = QtWidgets.QFrame(parent=self.widget_4)
+        self.line_2 = QtWidgets.QFrame()
         self.line_2.setGeometry(QtCore.QRect(180, 410, 95, 20))
         self.line_2.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         self.line_2.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         self.line_2.setObjectName("line_2")
-        self.label = QtWidgets.QLabel(parent=self.widget_4)
+        self.label = QtWidgets.QLabel(parent=self.instrumentsWidget)
         self.label.setGeometry(QtCore.QRect(100, 410, 73, 16))
+
+        self.instrumentLineLayout.addWidget(self.line)
+        self.instrumentLineLayout.addWidget(self.label)
+        self.instrumentLineLayout.addWidget(self.line_2)
+
         font = QtGui.QFont()
         font.setFamily("Arial")
         font.setPointSize(10)
@@ -589,13 +626,15 @@ class Ui_MainWindow(object):
         self.label.setFont(font)
         self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.label.setObjectName("label")
-        self.formLayoutWidget = QtWidgets.QWidget(parent=self.widget_4)
-        self.formLayoutWidget.setGeometry(QtCore.QRect(10, 429, 261, 106))
+        self.formLayoutWidget = QtWidgets.QWidget()
+        self.formLayoutWidget.setMinimumSize(261, 200)
         self.formLayoutWidget.setObjectName("formLayoutWidget")
-        self.formLayout = QtWidgets.QFormLayout(self.formLayoutWidget)
+ 
+        self.formLayout = QtWidgets.QFormLayout()
         self.formLayout.setContentsMargins(0, 20, 0, 20)
         self.formLayout.setSpacing(6)
         self.formLayout.setObjectName("formLayout")
+        self.formLayoutWidget.setLayout(self.formLayout)
         self.label_2 = QtWidgets.QLabel(parent=self.formLayoutWidget)
         self.label_2.setObjectName("label_2")
         self.formLayout.setWidget(0, QtWidgets.QFormLayout.ItemRole.LabelRole, self.label_2)
@@ -611,6 +650,7 @@ class Ui_MainWindow(object):
         self.addressComboBox = QtWidgets.QComboBox(parent=self.formLayoutWidget)
         self.addressComboBox.setStyleSheet("background-color: white;")
         self.addressComboBox.setObjectName("addressComboBox")
+        self.formLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.addressComboBox)
 
         for addr in range(30):
             self.addressComboBox.addItem(f"{addr}")
@@ -626,19 +666,30 @@ class Ui_MainWindow(object):
                                        "1 A", "1.5 A"]
 
         
-        self.formLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.addressComboBox)
-        self.gridLayoutWidget_3 = QtWidgets.QWidget(parent=self.widget_4)
-        self.gridLayoutWidget_3.setGeometry(QtCore.QRect(10, 10, 261, 141))
+        
+        self.gridLayoutWidget_3 = QtWidgets.QWidget()
+        self.gridLayoutWidget_3.setMinimumSize(261, 100)
         self.gridLayoutWidget_3.setObjectName("gridLayoutWidget_3")
-        self.smu1Layout = QtWidgets.QVBoxLayout(self.gridLayoutWidget_3)
+        #self.gridLayoutWidget_3.setStyleSheet("background-color : red;")
+        self.smu1Layout = QtWidgets.QVBoxLayout()
         self.smu1Layout.setContentsMargins(0, 0, 0, 0)
         self.smu1Layout.setObjectName("smu1Layout")
-        self.gridLayoutWidget_4 = QtWidgets.QWidget(parent=self.widget_4)
-        self.gridLayoutWidget_4.setGeometry(QtCore.QRect(10, 160, 261, 141))
+        
+        self.gridLayoutWidget_3.setLayout(self.smu1Layout)
+
+        self.gridLayoutWidget_4 = QtWidgets.QWidget()
+        self.gridLayoutWidget_4.setMinimumSize(261, 100)
         self.gridLayoutWidget_4.setObjectName("gridLayoutWidget_4")
-        self.smu2Layout = QtWidgets.QVBoxLayout(self.gridLayoutWidget_4)
+        self.smu2Layout = QtWidgets.QVBoxLayout()
         self.smu2Layout.setContentsMargins(0, 0, 0, 0)
         self.smu2Layout.setObjectName("smu2Layout")
+        self.gridLayoutWidget_4.setLayout(self.smu2Layout)
+
+        self.instrumentLayout.addWidget(self.gridLayoutWidget_3)
+        self.instrumentLayout.addWidget(self.gridLayoutWidget_4)
+        self.instrumentLayout.addLayout(self.instrumentLineLayout)
+        self.instrumentLayout.addWidget(self.formLayoutWidget)
+        self.instrumentLayout.addWidget(self.addButton)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(parent=MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 1280, 22))
@@ -662,12 +713,13 @@ class Ui_MainWindow(object):
         self.smu2635bButton = QtWidgets.QPushButton('2635b')
         self.smuLabel1 = QtWidgets.QLabel('SMU')
         self.smuLabel1.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.smuLabel1.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.smuLabel1.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Ignored)
         self.smuLabel2 = QtWidgets.QLabel('SMU')
         self.smuLabel2.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        self.smuLabel2.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
-        self.smu2635bButton.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.smuLabel2.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Ignored)
+        self.smu2635bButton.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Ignored)
         self.smu2420Button.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
+
         font = QtGui.QFont()
         font.setPointSize(14)
         font.setBold(True)
@@ -689,7 +741,9 @@ class Ui_MainWindow(object):
         self.saveButton.clicked.connect(lambda: self.saveToExcel(MainWindow))
         self.captureButton.clicked.connect(lambda: self.captureScreen(MainWindow))
         self.captureGraphButton.clicked.connect(lambda: self.captureGraph(MainWindow))
-
+        self.startvSpinBox.valueChanged.connect(self.updateStep)
+        self.stopvSpinBox.valueChanged.connect(self.updateStep)
+        self.SSPpointsSpinBox.valueChanged.connect(self.updateStep)
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "KeithleyApp"))
@@ -736,46 +790,35 @@ class Ui_MainWindow(object):
 
         if idx == 0: # device 2420
             # 위젯 설정
-            self.smu1Layout.addWidget(self.smuLabel1, 1)
-            
-            self.smu1Layout.addWidget(self.smu2420Button,4)
+            self.smu1Layout.addWidget(self.smuLabel1 ,1 )
+            self.smu1Layout.addWidget(self.smu2420Button, 3)
             self.addr2420 = addr
             try:
                 # device 연결
                 device = self.rm.open_resource(f'GPIB::{self.addr2420}::INSTR')
                 self.smu2420Button.setText("2420 - {self.addr2420}\nConnected") 
-                #self.device2420 = SMUDevice(device, "2420")  #TODO : device로 변경  
-                self.device2420 = SMUDevice()
+                self.device2420 = SMUDevice("2420", device)
                 self.thread.setDevice(self.device2420, 0)  
                 
             except Exception as e:
                 self.smu2420Button.setText(f"2420 - {self.addr2420}\nFailed to Connect")
                 self.device2420 = None
 
-                self.device2420 = SMUDevice("2420") #TODO : DEL
-                self.smu2420Button.setText(f"2420 - {self.addr2420}\nConnected") #TODO DEL
-                self.thread.setDevice(self.device2420, 0)  #TODO DEL
-
         elif idx == 1:  # device 2635b
             self.addr2635b
             self.smu2Layout.addWidget(self.smuLabel2, 1)
-            self.smu2Layout.addWidget(self.smu2635bButton,4)
+            self.smu2Layout.addWidget(self.smu2635bButton, 3)
             self.addr2635b = addr
 
             try:
                 # device 연결
                 device = self.rm.open_resource(f'GPIB::{self.addr2420}::INSTR')
                 self.smu2635bButton.setText("2635b - {self.addr2635b}\nConncted")     
-                #self.device2635b = SMUDevice(device, "2635b")
+                self.device2635b = SMUDevice("2635b", device)
                 self.thread.setDevice(self.device2635b, 1) 
             except Exception as e:
                 self.smu2635bButton.setText(f"2635b - {self.addr2635b}\nFailed to connect")
                 self.device2635b = None
-
-                self.device2635b = SMUDevice("2365b") #TODO : DEL
-                self.smu2635bButton.setText(f"2635b - {self.addr2635b}\nConnected") #TODO DEL
-                self.thread.setDevice(self.device2635b, 1)  #TODO DEL
-
             
     def saveSettings(self, idx):
         self.commonSet.update(self.SSPpointsSpinBox.value(),
@@ -816,6 +859,7 @@ class Ui_MainWindow(object):
             self.sourceRangeComboBox.addItems(self.sourceRangeLists)
             self.measureRangeComboBox.clear()
             self.measureRangeComboBox.addItems(self.measureRangeLists2420)
+
         elif idx==1: # 2635b
 
             self.sourceRangeComboBox.clear()
@@ -901,3 +945,12 @@ class Ui_MainWindow(object):
                                                    "PNG Files (*.png);;All Files (*)")
         if file_name:
             screenshot.save(file_name, "png")
+
+    def updateStep(self):
+        start = self.startvSpinBox.value()
+        stop = self.stopvSpinBox.value()
+        sweep = self.SSPpointsSpinBox.value()
+
+        if self.modeComboBox.currentIndex() == 0:
+            step = float(start - stop) / sweep
+            self.stepvSpinBox.setValue(step)
