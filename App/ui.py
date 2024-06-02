@@ -411,8 +411,8 @@ class Ui_MainWindow(object):
         self.plotWidget = pg.PlotWidget()
         
         self.plotWidget.setBackground('w')  
-        self.plotWidget.setLabel('left', 'Drain Current (A)', color='k', size='17pt')  
-        self.plotWidget.setLabel('bottom', 'Drain Voltage (V)', color='k', size='17pt')  
+        self.plotWidget.setLabel('left', 'Drain Current I<sub>d</sub> (A)', color='k', size='17pt')  
+        self.plotWidget.setLabel('bottom', 'Drain Voltage V<sub>d</sub> (V)', color='k', size='17pt')  
         self.plotWidget.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))  # y축 라인을 검은색으로 설정
         self.plotWidget.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))  # x축 라인을 검은색으로 설정
 
