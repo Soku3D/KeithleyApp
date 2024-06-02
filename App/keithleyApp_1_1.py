@@ -24,37 +24,6 @@ import pyvisa
 painter = QPainter()
 painter.setBrush(QColor(135, 206, 235)) 
 
-class KeithleyMainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-
-        #self.setWindowTitle("Keithley")
-
-        exe_path = sys.argv[0]
-        exe_dir = os.path.dirname(exe_path)
-        icon_path_16x16 = os.path.join(exe_dir, 'Resources/16x16.ico')
-        icon_path_256 = os.path.join(exe_dir, 'Resources/256.ico')
-
-        self.setWindowIcon(QIcon(icon_path_16x16))       
-        self.setTaskbarIcon(icon_path_256)
-        # self.setStyleSheet("""
-        #     QWidget {
-        #         border-radius: 15px;
-        #     }
-        # """)
-
-    def setTaskbarIcon(self, icon_path):
-        try:
-            
-            hwnd = self.winId()# 윈도우 핸들 가져오기
-
-            pixmap = QPixmap(icon_path)
-            windll.shell32.SHAppBarMessage(0x00C6, 0x00000002, HANDLE(hwnd), HICON(pixmap.toWinHICON()))
-
-        except Exception as e:
-            print(f"Failed to set taskbar icon: {e}")
-
-
 class Ui_MainWindow(object):
     def __init__(self):
         super().__init__()
@@ -366,8 +335,8 @@ class Ui_MainWindow(object):
                 self.IsConnected_2635b.setText(f"Connected to {address}")
                 time.sleep(1)
                 self.IsConnected_2635b.setText("")
-                self.device2420.write('smua.source.func = smua.OUTPUT_DCV')# 전압 source mode
-                self.device2420.write('smua.measure.func = smua.FUNC_DCI') # 전류 measure mode
+                self.device2635b.write('smua.source.func = smua.OUTPUT_DCV')# 전압 source mode
+                self.device2635b.write('smua.measure.func = smua.FUNC_DCI') # 전류 measure mode
                 self.device2635b.write(f'smua.source.limiti = {self.CurrentLimit_2635b.value()}') # 전류 한계 설정
        
             except Exception as e:

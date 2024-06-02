@@ -1,6 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMainWindow, QAction, qApp
-from PyQt5.QtCore import QSettings, Qt
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMainWindow
+from PyQt6.QtCore import QSettings, Qt
 
 class MyApp(QMainWindow):
     def __init__(self):
