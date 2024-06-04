@@ -13,6 +13,7 @@ import time
 import sys
 import os
 import pandas as pd
+import numpy as np
 pg.setConfigOptions(antialias=True)
 
 class CommonSettings:
@@ -48,27 +49,40 @@ class IVThread(QtCore.QThread):
         try:
             self.startTime = time.perf_counter()
             print(self.commonSetting.sweepPoint)
-            #keithley 설정
+
             #self.device0.setKeithley()
             #self.device1.setKeithley()
-            #sweepDevice = 
-            #BiasDevice = 
-            biasStepList = [0]
-            SweepList = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9 , 10]
-            currents = []
-            vs = []
-            test =  [-1.382756E-09, -2.017378E-10, -1.951761E-10,  -1.815496E-10,  -1.860914E-10,  -1.850819E-10, -1.775108E-10, -1.840714E-10,  -1.724632E-10,  -1.734720E-10, -1.765009E-10]
+
+            if self.devices["drain"].mode == 0: #sweep
+
+                self.devices["sweep"] = self.device["drain"]
+                self.devices["biasStep"] = self.device["gate"]
+
+            elif self.devices["gate"].mode == 0: #sweep
+                
+                self.devices["sweep"] = self.device["gate"]
+                self.devices["biasStep"] = self.device["drain"]
+
+            biasStepList = np.arrange( self.devices["biasStep"].startV,
+                                      self.devices["biasStep"].stopV,
+                                      self.devices["biasStep"].stepV)
+            sweepList = np.arrange( self.devices["sweep"].startV,
+                                      self.devices["sweep"].stopV,
+                                      self.devices["sweep"].stepV)
+            
             #Oupput On
             for bias in biasStepList:
                 i=0
-                for drainVolt in SweepList:
-                    self.currTime = time.perf_counter()
-                    elapesedTime = self.currTime- self.startTime
+                for drainVolt in sweepList:
+                    
                     #measure Currents
                     vs.append(drainVolt)
                     currents.append(test[i])
                     time.sleep(1)
                     i+=1
+
+                    self.currTime = time.perf_counter()
+                    elapesedTime = self.currTime- self.startTime
                     self.data.emit(vs,currents, elapesedTime)
                     
 
@@ -96,12 +110,16 @@ class SMUDevice(object):
     stopVolt = 0
     stepVolt = 0
 
+    biasStart = 0
+    biasStop = 0
+    biasStop = 0
+
     def __init__(self, deviceName, d):
         super().__init__()
         self.deviceName  = deviceName
         self.device = d
 
-    def setValues(self, startV, stopV, stepV):
+    def setSweepValues(self, startV, stopV, stepV):
         self.startVolt = startV
         self.stopVolt = stopV
         self.stepVolt = stepV
@@ -826,13 +844,13 @@ class Ui_MainWindow(object):
                             self.repeatSpinBox.value())
         self.thread.updateSettings(self.commonSet)
         if idx==0:
-            self.device2420.setValues(
+            self.device2420.setSweepValues(
                 self.startvSpinBox.value(),
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value()
             )
         elif idx==1:
-            self.device2635b.setValues(
+            self.device2635b.setSweepValues(
                 self.startvSpinBox.value(),
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value()
