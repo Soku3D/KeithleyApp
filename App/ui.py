@@ -106,19 +106,21 @@ class SMUDevice(object):
         self.stopVolt = stopV
         self.stepVolt = stepV
 
-    def setKeithley(self):
+    def setCurrentLimit(self):
         if self.deviceName == "2420":
             self.device.write(f":SENS:PROT {self.currentLimit}")
         if self.deviceName == "2635b":
             self.device.write(f"smua.limiti =  {self.currentLimit}")
 
     def sourcingVoltage(self, v):
-        if self.deviceName == "2420":
-            self.device.write(f":SOUR:VORT {v}")
-        elif self.deviceName == "2635b":
-            self.device.write(f"smua.source.levelV = {v}")
+        try:
+            if self.deviceName == "2420":
+                self.device.write(f":SOUR:VORT {v}")
+            elif self.deviceName == "2635b":
+                self.device.write(f"smua.source.levelV = {v}")
+        except pyvisa.errors.VisaIOError as e:
+            print(e)
 
-    # sourcing measure function 지정
     def setFunction(self):
         if self.deviceName == "2420":
             self.device.write(":SOUR:FUNC VOLT")
@@ -126,11 +128,31 @@ class SMUDevice(object):
         elif self.deviceName == "2635b":
             self.device.write("smua.source.func = smua.OUTPUT_DCVOLTS")
 
-    def outputOn(self):
+    def setOutputOn(self):
+        try:
+            if self.deviceName == "2420":
+                self.device.write(":OUTP ON")
+            elif self.deviceName == "2635b":
+                self.device.write("smua.source.output = smua.OUTPUT_ON")
+        except pyvisa.errors.VisaIOError as e:
+            print(e)
+    def setOutputOff(self):
         if self.deviceName == "2420":
-            self.device.write(":OUTP ON")
+            self.device.write(":OUTP OFF")
         elif self.deviceName == "2635b":
-            self.device.write("smua.source.output = smua.OUTPUT_ON")
+            self.device.write("smua.source.output = smua.OUTPUT_OFF")
+
+    def getCurrent(self):
+        
+        current = 0
+        if self.deviceName == "2420":
+            current = float(self.device.query(':READ?'))
+        elif self.deviceName == "2635b":
+            self.device.write('print(smua.measure.i())')
+            current =  self.device.read()
+
+        return current
+        
 
 
 
@@ -687,6 +709,8 @@ class Ui_MainWindow(object):
 
         self.instrumentLayout.addWidget(self.gridLayoutWidget_3)
         self.instrumentLayout.addWidget(self.gridLayoutWidget_4)
+        spacer2 = QtWidgets.QSpacerItem(40, 100, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
+        self.instrumentLayout.addItem(spacer2)
         self.instrumentLayout.addLayout(self.instrumentLineLayout)
         self.instrumentLayout.addWidget(self.formLayoutWidget)
         self.instrumentLayout.addWidget(self.addButton)
@@ -800,7 +824,8 @@ class Ui_MainWindow(object):
                 self.device2420 = SMUDevice("2420", device)
                 self.thread.setDevice(self.device2420, 0)  
                 
-            except Exception as e:
+            except pyvisa.errors.VisaIOError as e:
+                print(e)
                 self.smu2420Button.setText(f"2420 - {self.addr2420}\nFailed to Connect")
                 self.device2420 = None
 
@@ -873,9 +898,9 @@ class Ui_MainWindow(object):
             self.thread.start()
 
     def updateTabs(self, volts, currs, time):
-        print(time)
-        print(volts)
-        print(currs)
+        #print(time)
+        #print(volts)
+        #print(currs)
         self.curve.setData(volts, currs)
         row_position = self.table.rowCount()
         self.table.insertRow(row_position)
@@ -886,9 +911,13 @@ class Ui_MainWindow(object):
 
     def updateMode(self):
         mode = self.modeComboBox.currentIndex()
+        self.startvSpinBox.setValue(0)
+        self.stopvSpinBox.setValue(0)
         if mode == 0 :
             self.startvSpinBox.setEnabled(True)
             self.stopvSpinBox.setEnabled(True)
+          
+        #Bias mode
         if mode == 1 :
             self.startvSpinBox.setEnabled(True)
             self.stopvSpinBox.setEnabled(False)
@@ -950,7 +979,7 @@ class Ui_MainWindow(object):
         start = self.startvSpinBox.value()
         stop = self.stopvSpinBox.value()
         sweep = self.SSPpointsSpinBox.value()
-
+    
         if self.modeComboBox.currentIndex() == 0:
             step = float(start - stop) / sweep
             self.stepvSpinBox.setValue(step)
