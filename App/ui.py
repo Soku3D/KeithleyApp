@@ -80,6 +80,7 @@ class IVThread(QtCore.QThread):
             self.devices["drain"].setCurrRange()
             self.devices["gate"].setVoltRange()
             self.devices["gate"].setCurrRange()
+            
             onOff = False
             #Oupput On
             for bias in biasStepList:
@@ -92,7 +93,8 @@ class IVThread(QtCore.QThread):
                     if onOff==False:
                         self.devices["drain"].setOutputOn()
                         self.devices["gate"].setOutputOn()
-                    onOff = True
+                        onOff = True
+                    
 
                     self.currents.append(self.devices["drain"].getCurrent())
                     time.sleep(self.commonSetting.sourceDelay)
@@ -103,6 +105,7 @@ class IVThread(QtCore.QThread):
                     
             self.devices["drain"].setOutputOff()
             self.devices["gate"].setOutputOff()
+
         except Exception as e:
             print(f"{e}")
 
