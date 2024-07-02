@@ -47,45 +47,64 @@ class IVThread(QtCore.QThread):
         elif idx==1: # 2635b
             self.devices["gate"] = device
 
+    def setDeviceCurrentLimits(self):
+        self.devices["drain"].setCurrentLimit(self.devices["drain"].currentLimit)
+        self.devices["gate"].setCurrentLimit(self.devices["gate"].currentLimit)
+
     def run(self): 
         try:
             self.startTime = time.perf_counter()
+            biasStepList = []
+            sweepList = []
 
-
-            if self.devices["gate"].stepVolt!=0:
+            if self.devices["gate"].stepVolt != 0:
                 biasStepList = np.arange( self.devices["gate"].startVolt,
                                         self.devices["gate"].stopVolt,
                                         self.devices["gate"].stepVolt)
+            else:
+                biasStepList.append(self.devices["gate"].startVolt)
                 
-            if self.devices["drain"].stepVolt!=0:
+            if self.devices["drain"].stepVolt != 0:
                 sweepList = np.arange( self.devices["drain"].startVolt,
                                         self.devices["drain"].stopVolt,
                                         self.devices["drain"].stepVolt)
-            print ("biasStep : ")
-            print(biasStepList)
-            print ("sweepList : ")
-            print(sweepList)
-            self.devices["drain"].setCurrentLimit(0.1)
-            self.devices["gate"].setCurrentLimit(0.1)
-           
+            else:
+                sweepList.append(self.devices["drain"].startVolt)
+
+            self.setDeviceCurrentLimits()
+            
+            self.devices["drain"].setFunction()
+            self.devices["gate"].setFunction()
+
+            self.devices["drain"].setVoltRange()
+            self.devices["drain"].setCurrRange()
+            self.devices["gate"].setVoltRange()
+            self.devices["gate"].setCurrRange()
+            onOff = False
             #Oupput On
             for bias in biasStepList:
-                i=0
-                for drainVolt in sweepList:
+                self.devices["drain"].sourcingVoltage(bias)
+                for sweepVolt in sweepList:
                     #measure Currents
-                    self.vs.append(drainVolt)
-                    self.currents.append(1)
-                    time.sleep(1)
-                    i+=1
+                    self.devices["gate"].sourcingVoltage(sweepVolt)
+                    self.vs.append(sweepVolt)
+
+                    if onOff==False:
+                        self.devices["drain"].setOutputOn()
+                        self.devices["gate"].setOutputOn()
+                    onOff = True
+
+                    self.currents.append(self.devices["drain"].getCurrent())
+                    time.sleep(self.commonSetting.sourceDelay)
 
                     self.currTime = time.perf_counter()
                     elapesedTime = self.currTime- self.startTime
                     self.data.emit(self.vs,self.currents, elapesedTime)
                     
-
+            self.devices["drain"].setOutputOff()
+            self.devices["gate"].setOutputOff()
         except Exception as e:
             print(f"{e}")
-            print("error")
 
     def threadReady(self):
         if self.devices.get("drain") !=None and  self.devices.get("gate") != None:
@@ -104,6 +123,9 @@ class SMUDevice(object):
     currentsRange = 0
     currentLimit = 0.1
     
+    currAutoRange = True
+    voltAutoRange = True
+
     startVolt = 0
     stopVolt = 0
     stepVolt = 0
@@ -122,11 +144,38 @@ class SMUDevice(object):
         self.stopVolt = stopV
         self.stepVolt = stepV
 
+    def setCurrentLimitValue(self, limit):
+        self.currentLimit = limit
+
     def setCurrentLimit(self):
         if self.deviceName == "2420":
             self.device.write(f":SENS:PROT {self.currentLimit}")
         if self.deviceName == "2635b":
             self.device.write(f"smua.limiti =  {self.currentLimit}")
+
+    def setVoltRange(self):
+        if self.deviceName == "2420":
+            if self.voltAutoRange:
+                self.device.write(":SOUR:VOLT:RANG:AUTO ON")
+            else:
+                self.device.write(f":SOUR:VOLT:RANG {self.voltRange}")
+        if self.deviceName == "2635b":
+            if self.voltAutoRange:
+                self.device.write(":smua.source.autorangeV = smua.AUTORANGE_ON")
+            else:
+                self.device.write(f"smua.source.rangeV = {self.voltRange}")
+
+    def setCurrRange(self):
+        if self.deviceName == "2420":
+            if self.currAutoRange:
+                self.device.write(":SENS:CURR:RANG:AUTO ON")
+            else:
+                self.device.write(f":SENS:PROT {self.currentsRange}")
+        if self.deviceName == "2635b":
+            if self.voltAutoRange:
+                self.device.write("smua.measure.autorangei = smua.AUTORANGE_ON")
+            else:
+                self.device.write(f"smua.measure.rangei =  {self.currentsRange}")
 
     def sourcingVoltage(self, v):
         try:
@@ -141,6 +190,7 @@ class SMUDevice(object):
         if self.deviceName == "2420":
             self.device.write(":SOUR:FUNC VOLT")
             self.device.write(':SENS:FUNC "CURR"')
+            self.device.write(':FORM:ELEM CURR')
         elif self.deviceName == "2635b":
             self.device.write("smua.source.func = smua.OUTPUT_DCVOLTS")
 
@@ -152,6 +202,7 @@ class SMUDevice(object):
                 self.device.write("smua.source.output = smua.OUTPUT_ON")
         except pyvisa.errors.VisaIOError as e:
             print(e)
+
     def setOutputOff(self):
         if self.deviceName == "2420":
             self.device.write(":OUTP OFF")
@@ -159,7 +210,6 @@ class SMUDevice(object):
             self.device.write("smua.source.output = smua.OUTPUT_OFF")
 
     def getCurrent(self):
-        
         current = 0
         if self.deviceName == "2420":
             current = float(self.device.query(':READ?'))
@@ -868,6 +918,7 @@ class Ui_MainWindow(object):
                 self.startvSpinBox.value(),
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value())
+
         elif idx==1:
             self.device2635b.setSweepValues(
                 self.startvSpinBox.value(),
