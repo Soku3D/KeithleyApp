@@ -122,9 +122,9 @@ class SMUDevice(object):
     # 0:LinearSweep | 1:Bias | 2:Step
     mode = 0 
     
-    voltRange = 0
-    currentsRange = 0
-    currentLimit = 0.1
+    voltRange = "200e-3"
+    currentsRange = "100e-3"
+    currentLimit = "1e-1"
     
     currAutoRange = True
     voltAutoRange = True
@@ -150,6 +150,19 @@ class SMUDevice(object):
     def setCurrentLimitValue(self, limit):
         self.currentLimit = limit
 
+    def setRange(self, currRange, voltRange):
+        if(currRange=="Auto"):
+            self.currAutoRange = True
+        else :
+            self.currentsRange = currRange
+            self.currAutoRange = False
+
+        if(voltRange=="Auto"):
+            self.voltAutoRange = True
+        else :
+            self.voltRange = voltRange
+            self.voltAutoRange = False
+
     def setCurrentLimit(self):
         if self.deviceName == "2420":
             self.device.write(f":SENS:PROT {self.currentLimit}")
@@ -174,11 +187,12 @@ class SMUDevice(object):
                 self.device.write(":SENS:CURR:RANG:AUTO ON")
             else:
                 self.device.write(f":SENS:PROT {self.currentsRange}")
+
         if self.deviceName == "2635b":
             if self.voltAutoRange:
                 self.device.write("smua.measure.autorangei = smua.AUTORANGE_ON")
             else:
-                self.device.write(f"smua.measure.rangei =  {self.currentsRange}")
+                self.device.write(f"smua.measure.rangei = {self.currentsRange}")
 
     def sourcingVoltage(self, v):
         try:
@@ -366,6 +380,7 @@ class Ui_MainWindow(object):
         self.stepvSpinBox.setStyleSheet("background-color: white;")
         self.stepvSpinBox.setObjectName("stepvSpinBox")
         self.stepvSpinBox.setEnabled(False)
+        self.stepvSpinBox.setMinimum(-100)
         self.startVformLayout.setWidget(4, QtWidgets.QFormLayout.ItemRole.FieldRole, self.stepvSpinBox)
         self.stopvSpinBox = QtWidgets.QSpinBox(parent=self.formLayoutWidget_3)
         self.stopvSpinBox.setStyleSheet("background-color: white;")
@@ -741,17 +756,25 @@ class Ui_MainWindow(object):
         for addr in range(30):
             self.addressComboBox.addItem(f"{addr}")
 
-        self.sourceRangeLists = ["200 mV", "2 V", "20 V", "200 V"]
-        self.measureRangeLists2420 = [ "1 µA", "10 µA","100 µA", 
+        self.sourceRangeLists = ["Auto", "200 mV", "2 V", "20 V", "200 V"]
+        self.measureRangeLists2420 = ["Auto", "1 µA", "10 µA","100 µA", 
                                        "1 mA","10 mA","100 mA",
                                        "1 A"]
-        self.measureRangeLists2635b = ["100 pA", 
+        self.measureRangeLists2635b = ["Auto", "100 pA", 
                                        "1 nA", "10 nA", "100 nA",
                                        "1 µA", "10 µA","100 µA", 
                                        "1 mA","10 mA","100 mA",
                                        "1 A", "1.5 A"]
 
-        
+        self.sourceRangeListsValue = ["Auto", "200e-3", "2", "20", "200"]
+        self.measureRangeLists2420Value = ["Auto", "1e-6", "10e-6","100e-6", 
+                                       "1e-3","10e-3","100e-3",
+                                       "1"]
+        self.measureRangeLists2635bValue = ["Auto", "100e-12", 
+                                       "1e-9", "10e-9", "100e-9",
+                                       "1e-6", "10e-6","100e-6", 
+                                       "1e-3","10e-3","100e-3",
+                                       "1", "1.5"]
         
         self.gridLayoutWidget_3 = QtWidgets.QWidget()
         self.gridLayoutWidget_3.setMinimumSize(261, 100)
@@ -915,19 +938,23 @@ class Ui_MainWindow(object):
                             self.delaySpinBox.value(),
                             self.repeatSpinBox.value())
         self.thread.updateSettings(self.commonSet)
+        voltRangeIdx = self.sourceRangeComboBox.currentIndex()
+        currRangeIdx = self.measureRangeComboBox.currentIndex()
 
         if idx==0:
             self.device2420.setSweepValues(
                 self.startvSpinBox.value(),
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value())
-
+            self.device2420.setRange(self.measureRangeLists2420Value[currRangeIdx], self.sourceRangeListsValue[voltRangeIdx])
+            self.device2420.setCurrentLimitValue(self.limitCurrentDSB.value())
         elif idx==1:
             self.device2635b.setSweepValues(
                 self.startvSpinBox.value(),
                 self.stopvSpinBox.value(),
                 self.stepvSpinBox.value())
-    
+            self.device2635b.setRange(self.measureRangeLists2635bValue[currRangeIdx], self.sourceRangeListsValue[voltRangeIdx])
+            self.device2635b.setCurrentLimitValue(self.limitCurrentDSB.value())
     def SetCommonSettings(self, settings):
 
         self.SSPpointsSpinBox.setValue(settings.sweepPoint)
