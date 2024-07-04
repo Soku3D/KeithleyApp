@@ -43,13 +43,13 @@ class IVThread(QtCore.QThread):
     # index-> 0 : 2420 | 1 : 2635b
     def setDevice(self, device, idx):
         if idx==0: # 2420
-            self.devices["drain"] = device
-        elif idx==1: # 2635b
             self.devices["gate"] = device
+        elif idx==1: # 2635b
+            self.devices["drain"] = device
 
     def setDeviceCurrentLimits(self):
-        self.devices["drain"].setCurrentLimit(self.devices["drain"].currentLimit)
-        self.devices["gate"].setCurrentLimit(self.devices["gate"].currentLimit)
+        self.devices["drain"].setCurrentLimit()
+        self.devices["gate"].setCurrentLimit()
 
     def run(self): 
         try:
@@ -58,31 +58,34 @@ class IVThread(QtCore.QThread):
             sweepList = []
 
             if self.devices["gate"].stepVolt != 0:
-                biasStepList = np.arange( self.devices["gate"].startVolt,
+                sweepList = np.arange( self.devices["gate"].startVolt,
                                         self.devices["gate"].stopVolt,
                                         self.devices["gate"].stepVolt)
             else:
-                biasStepList.append(self.devices["gate"].startVolt)
+                sweepList.append(self.devices["gate"].startVolt)
                 
             if self.devices["drain"].stepVolt != 0:
-                sweepList = np.arange( self.devices["drain"].startVolt,
+                biasStepList = np.arange( self.devices["drain"].startVolt,
                                         self.devices["drain"].stopVolt,
                                         self.devices["drain"].stepVolt)
             else:
-                sweepList.append(self.devices["drain"].startVolt)
+                biasStepList.append(self.devices["drain"].startVolt)
 
-            self.setDeviceCurrentLimits()
-            
+           
             self.devices["drain"].setFunction()
+       
             self.devices["gate"].setFunction()
-
+            self.setDeviceCurrentLimits()
+    
             self.devices["drain"].setVoltRange()
             self.devices["drain"].setCurrRange()
+
             self.devices["gate"].setVoltRange()
             self.devices["gate"].setCurrRange()
-            
-            onOff = False
-            #Oupput On
+        
+            print(f"biasStep:{biasStepList}\n")
+            print(f"sweep:{sweepList}")
+      
             for bias in biasStepList:
                 self.devices["drain"].sourcingVoltage(bias)
                 for sweepVolt in sweepList:
@@ -90,13 +93,10 @@ class IVThread(QtCore.QThread):
                     self.devices["gate"].sourcingVoltage(sweepVolt)
                     self.vs.append(sweepVolt)
 
-                    if onOff==False:
-                        self.devices["drain"].setOutputOn()
-                        self.devices["gate"].setOutputOn()
-                        onOff = True
-                    
+                    self.devices["drain"].setOutputOn()
+                    self.devices["gate"].setOutputOn()
 
-                    self.currents.append(self.devices["drain"].getCurrent())
+                    self.currents.append(self.devices["gate"].getCurrent())
                     time.sleep(self.commonSetting.sourceDelay)
 
                     self.currTime = time.perf_counter()
@@ -105,6 +105,7 @@ class IVThread(QtCore.QThread):
                     
             self.devices["drain"].setOutputOff()
             self.devices["gate"].setOutputOff()
+
 
         except Exception as e:
             print(f"{e}")
@@ -124,7 +125,7 @@ class SMUDevice(object):
     
     voltRange = "200e-3"
     currentsRange = "100e-3"
-    currentLimit = "1e-1"
+    currentLimit = 0.1
     
     currAutoRange = True
     voltAutoRange = True
@@ -165,9 +166,11 @@ class SMUDevice(object):
 
     def setCurrentLimit(self):
         if self.deviceName == "2420":
-            self.device.write(f":SENS:PROT {self.currentLimit}")
+            #print(f"2420 currLimit: {self.currentLimit}")
+            self.device.write(f":SENS:CURR:PROT {self.currentLimit}")
         if self.deviceName == "2635b":
-            self.device.write(f"smua.limiti =  {self.currentLimit}")
+            #print(f"2635b currLimit: {self.currentLimit}")
+            self.device.write(f"smua.source.limiti = {self.currentLimit}")
 
     def setVoltRange(self):
         if self.deviceName == "2420":
@@ -177,16 +180,18 @@ class SMUDevice(object):
                 self.device.write(f":SOUR:VOLT:RANG {self.voltRange}")
         if self.deviceName == "2635b":
             if self.voltAutoRange:
-                self.device.write(":smua.source.autorangeV = smua.AUTORANGE_ON")
+                self.device.write("smua.source.autorangev = smua.AUTORANGE_ON")
             else:
-                self.device.write(f"smua.source.rangeV = {self.voltRange}")
+                self.device.write(f"smua.source.rangev = {self.voltRange}")
 
     def setCurrRange(self):
         if self.deviceName == "2420":
             if self.currAutoRange:
                 self.device.write(":SENS:CURR:RANG:AUTO ON")
+                print("device 2420 autoRange")
             else:
-                self.device.write(f":SENS:PROT {self.currentsRange}")
+                self.device.write(f":SENS:CURR:RANG {self.currentsRange}")
+                print("device 2420 autoRange")
 
         if self.deviceName == "2635b":
             if self.voltAutoRange:
@@ -197,16 +202,23 @@ class SMUDevice(object):
     def sourcingVoltage(self, v):
         try:
             if self.deviceName == "2420":
-                self.device.write(f":SOUR:VORT {v}")
+                #print("sourcingVoltage 2420")
+                self.device.write(f":SOUR:VOLT:LEV {v}")
+                #print(v)
+
             elif self.deviceName == "2635b":
-                self.device.write(f"smua.source.levelV = {v}")
+                #print("sourcingVoltage 2635b")
+                self.device.write(f"smua.source.levelv = {v}")
+                #print(v)
+
         except pyvisa.errors.VisaIOError as e:
             print(e)
 
     def setFunction(self):
+        self.device.write('*RST') 
         if self.deviceName == "2420":
-            self.device.write(":SOUR:FUNC VOLT")
-            self.device.write(':SENS:FUNC "CURR"')
+            self.device.write(':SENS:FUNC "CURR"')  # 전류 측정 모드 설정
+            self.device.write(':SOUR:FUNC VOLT')  # 전압 소스 모드 설정
             self.device.write(':FORM:ELEM CURR')
         elif self.deviceName == "2635b":
             self.device.write("smua.source.func = smua.OUTPUT_DCVOLTS")
@@ -907,10 +919,11 @@ class Ui_MainWindow(object):
             self.addr2420 = addr
             try:
                 # device 연결
-                device = self.rm.open_resource(f'GPIB::{self.addr2420}::INSTR')
+                device = self.rm.open_resource(f'GPIB0::{self.addr2420}::INSTR')
                 self.smu2420Button.setText("2420 - {self.addr2420}\nConnected") 
                 self.device2420 = SMUDevice("2420", device)
-                self.thread.setDevice(self.device2420, 0)  
+                self.thread.setDevice(self.device2420, 0) 
+                print("Device 2420 Connected") 
                 
             except pyvisa.errors.VisaIOError as e:
                 print(e)
@@ -925,7 +938,7 @@ class Ui_MainWindow(object):
 
             try:
                 # device 연결
-                device = self.rm.open_resource(f'GPIB::{self.addr2635b}::INSTR')
+                device = self.rm.open_resource(f'GPIB1::{self.addr2635b}::INSTR')
                 self.smu2635bButton.setText("2635b - {self.addr2635b}\nConncted")     
                 self.device2635b = SMUDevice("2635b", device)
                 self.thread.setDevice(self.device2635b, 1) 
