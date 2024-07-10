@@ -13,6 +13,7 @@ import sys
 import os
 import pandas as pd
 import numpy as np
+import math
 
 pg.setConfigOptions(antialias=True)
 
@@ -95,8 +96,10 @@ class IVThread(QtCore.QThread):
 
                     self.devices["drain"].setOutputOn()
                     self.devices["gate"].setOutputOn()
-
-                    self.currents.append(self.devices["gate"].getCurrent())
+                    curr = self.devices["drain"].getCurrent()
+                    print(curr)
+                    logCurr = math.log10(abs(curr))
+                    self.currents.append(logCurr)
                     time.sleep(self.commonSetting.sourceDelay)
 
                     self.currTime = time.perf_counter()
@@ -217,10 +220,11 @@ class SMUDevice(object):
     def setFunction(self):
         self.device.write('*RST') 
         if self.deviceName == "2420":
-            self.device.write(':SENS:FUNC "CURR"')  # 전류 측정 모드 설정
+            self.device.write(":SENS:FUNC 'CURR:DC'")  # 전류 측정 모드 설정
             self.device.write(':SOUR:FUNC VOLT')  # 전압 소스 모드 설정
             self.device.write(':FORM:ELEM CURR')
         elif self.deviceName == "2635b":
+            self.device.write('*CLS')
             self.device.write("smua.source.func = smua.OUTPUT_DCVOLTS")
 
     def setOutputOn(self):
@@ -245,7 +249,7 @@ class SMUDevice(object):
         elif self.deviceName == "2635b":
             self.device.write('print(smua.measure.i())')
             current =  self.device.read()
-
+            current = float(current[:-1])
         return current
 
 class Ui_MainWindow(object):
