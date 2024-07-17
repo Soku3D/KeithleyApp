@@ -1240,7 +1240,7 @@ class KeithleyMainWindow(QMainWindow):
         icon_path_256 = os.path.join(exe_dir, 'Resources/256.ico')
 
         self.setWindowIcon(QIcon(icon_path_16x16))       
-        self.setTaskbarIcon(icon_path_256)
+        #self.setTaskbarIcon(icon_path_256)
         self.setStyleSheet("background-color : #F8F8F8;")
 
     def setTaskbarIcon(self, icon_path):
