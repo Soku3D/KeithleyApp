@@ -1,4 +1,4 @@
-#TODO Dual mode, 데이터 저장포멧, 
+#TODO 세팅 로드
 from PyQt6 import QtCore, QtGui, QtWidgets
 import pyqtgraph as pg
 import pyvisa
@@ -17,6 +17,8 @@ class CommonSettings:
     Repeate = 1
     startTime = 0
     currTime = 0
+    bIsDualSweep = False
+
     def __init__(self):
         super().__init__()
 
@@ -24,6 +26,10 @@ class CommonSettings:
         self.sweepPoint = p
         self.sourceDelay = d
         self.Repeate = r
+
+    def updateDualSweep(self, IsDualSweep):
+        self.bIsDualSweep = IsDualSweep
+        
 
 class IVThread(QtCore.QThread):
     # DrainVolt , DrainCurr, DrainLogCurr, GateVolt, GateCurr, GateLogCurr, Time
@@ -47,46 +53,11 @@ class IVThread(QtCore.QThread):
         elif idx==1: # 2635b
             self.devices["drain"] = device
 
-    def setDeviceCurrentLimits(self):
-        self.devices["drain"].setCurrentLimit()
-        self.devices["gate"].setCurrentLimit()
 
-    def run(self): 
-        try:
-            self.startTime = time.perf_counter()
-            biasStepList = []
-            sweepList = []
 
-            if self.devices["gate"].stepVolt != 0:
-                sweepList = np.arange( self.devices["gate"].startVolt,
-                                        self.devices["gate"].stopVolt+ self.devices["gate"].stepVolt,
-                                        self.devices["gate"].stepVolt)
-            else:
-                sweepList.append(self.devices["gate"].startVolt)
-                
-            if self.devices["drain"].stepVolt != 0:
-                biasStepList = np.arange( self.devices["drain"].startVolt,
-                                        self.devices["drain"].stopVolt,
-                                        self.devices["drain"].stepVolt)
-            else:
-                biasStepList.append(self.devices["drain"].startVolt)
-
-           
-            self.devices["drain"].setFunction()
-       
-            self.devices["gate"].setFunction()
-            self.setDeviceCurrentLimits()
-    
-            self.devices["drain"].setVoltRange()
-            self.devices["drain"].setCurrRange()
-
-            self.devices["gate"].setVoltRange()
-            self.devices["gate"].setCurrRange()
-        
-            print(f"biasStep:{biasStepList}\n")
-            print(f"sweep:{sweepList}")
-            outputOn_ = False
-            for bias in biasStepList:
+    def startSweep(self, biasStepList, sweepList):
+        outputOn_ = False
+        for bias in biasStepList:
                 bias = round(bias ,3)
                 self.devices["drain"].sourcingVoltage(bias)
                 for sweepVolt in sweepList:
@@ -124,9 +95,60 @@ class IVThread(QtCore.QThread):
                                     self.gateVolts, self.gateCurrents, self.gateLogScaleCurrents,
                                     elapesedTime)
                     
+            
+        
+    def run(self): 
+        try:
+            self.startTime = time.perf_counter()
+            biasStepList = []
+            sweepList = []
+
+            if self.devices["gate"].stepVolt != 0:
+                sweepList = np.arange( self.devices["gate"].startVolt,
+                                        self.devices["gate"].stopVolt+ self.devices["gate"].stepVolt,
+                                        self.devices["gate"].stepVolt)
+            else:
+                sweepList.append(self.devices["gate"].startVolt)
+                
+            if self.devices["drain"].stepVolt != 0:
+                biasStepList = np.arange( self.devices["drain"].startVolt,
+                                        self.devices["drain"].stopVolt,
+                                        self.devices["drain"].stepVolt)
+            else:
+                biasStepList.append(self.devices["drain"].startVolt)
+
+            self.devices["drain"].setFunction()
+            self.devices["drain"].setVoltRange()
+            self.devices["drain"].setCurrRange()
+
+            self.devices["gate"].setFunction()
+            self.devices["gate"].setVoltRange()
+            self.devices["gate"].setCurrRange()
+
+            self.devices["gate"].setCurrentLimit()
+            self.devices["drain"].setCurrentLimit()
+
+            print(f"biasStep:{biasStepList}\n")
+            print(f"sweep:{sweepList}")
+            
+
+            print(self.commonSetting.bIsDualSweep)
+            
+            self.startSweep(biasStepList, sweepList)
+            
+            if self.commonSetting.bIsDualSweep == True:
+                    print("start Inv")
+                    invBiasList = biasStepList[::-1]
+        
+                    invSweepList = sweepList[::-1]
+                    invSweepList = invSweepList[1::]
+                    print("inv : ", invBiasList)
+                    print("inv : ", invSweepList)
+
+                    self.startSweep(invBiasList, invSweepList)
+
             self.devices["drain"].setOutputOff()
             self.devices["gate"].setOutputOff()
-
 
         except Exception as e:
             print(f"{e}")
@@ -143,6 +165,9 @@ class SMUDevice(object):
 
     # 0:LinearSweep | 1:Bias | 2:Step
     mode = 0 
+    modeIdx = 0 
+    voltRangeIdx = 0
+    currentRangeIdx = 0
     
     voltRange = "200e-3"
     currentsRange = "100e-3"
@@ -163,7 +188,10 @@ class SMUDevice(object):
         super().__init__()
         self.deviceName  = deviceName
         self.device = d
-
+    def setIdx(self, mode, volt, curr):
+        self.modeIdx = mode
+        self.voltRangeIdx = volt
+        self.currentRangeIdx = curr
     def setSweepValues(self, startV, stopV, stepV):
         self.startVolt = startV
         self.stopVolt = stopV
@@ -171,36 +199,40 @@ class SMUDevice(object):
 
     def setCurrentLimitValue(self, limit):
         self.currentLimit = limit
+        print(self.currentLimit)
 
     def setRange(self, currRange, voltRange):
-        if(currRange=="Auto"):
+        if currRange=="Auto":
             self.currAutoRange = True
         else :
             self.currentsRange = currRange
             self.currAutoRange = False
 
-        if(voltRange=="Auto"):
+        if voltRange=="Auto":
             self.voltAutoRange = True
         else :
             self.voltRange = voltRange
             self.voltAutoRange = False
 
     def setCurrentLimit(self):
+
         if self.deviceName == "2420":
-            #print(f"2420 currLimit: {self.currentLimit}")
+            print(f"2420 Set currLimit: {self.currentLimit}")
             self.device.write(f":SENS:CURR:PROT {self.currentLimit}")
         if self.deviceName == "2635b":
-            #print(f"2635b currLimit: {self.currentLimit}")
+            print(f"2635b Set currLimit: {self.currentLimit}")
             self.device.write(f"smua.source.limiti = {self.currentLimit}")
 
     def setVoltRange(self):
         if self.deviceName == "2420":
             if self.voltAutoRange:
+                print("2420 AutoRange")
                 self.device.write(":SOUR:VOLT:RANG:AUTO ON")
             else:
                 self.device.write(f":SOUR:VOLT:RANG {self.voltRange}")
         if self.deviceName == "2635b":
             if self.voltAutoRange:
+                print("2635b AutoRange")
                 self.device.write("smua.source.autorangev = smua.AUTORANGE_ON")
             else:
                 self.device.write(f"smua.source.rangev = {self.voltRange}")
@@ -401,9 +433,9 @@ class Ui_MainWindow(object):
         self.label_8.setText("")
         self.label_8.setObjectName("label_8")
         self.modeFormLayout.setWidget(3, QtWidgets.QFormLayout.ItemRole.LabelRole, self.label_8)
-        self.checkBox = QtWidgets.QCheckBox(parent=self.formLayoutWidget_2)
-        self.checkBox.setObjectName("checkBox")
-        self.modeFormLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.checkBox)
+        self.dualSweepcheckBox = QtWidgets.QCheckBox(parent=self.formLayoutWidget_2)
+        self.dualSweepcheckBox.setObjectName("checkBox")
+        self.modeFormLayout.setWidget(1, QtWidgets.QFormLayout.ItemRole.FieldRole, self.dualSweepcheckBox)
         self.limitCurrentDSB = QtWidgets.QDoubleSpinBox(parent=self.formLayoutWidget_2)
         self.limitCurrentDSB.setStyleSheet("background-color: white;")
         self.limitCurrentDSB.setObjectName("limitCurrentDSB")
@@ -445,7 +477,8 @@ class Ui_MainWindow(object):
         self.stepvSpinBox.setStyleSheet("background-color: white;")
         self.stepvSpinBox.setObjectName("stepvSpinBox")
         self.stepvSpinBox.setEnabled(False)
-        self.stepvSpinBox.setMinimum(-100)
+        self.stepvSpinBox.setMinimum(-200)
+        self.stepvSpinBox.setMaximum(200)
         self.stepvSpinBox.setDecimals(4)
         self.startVformLayout.setWidget(4, QtWidgets.QFormLayout.ItemRole.FieldRole, self.stepvSpinBox)
         self.stopvSpinBox = QtWidgets.QDoubleSpinBox(parent=self.formLayoutWidget_3)
@@ -609,6 +642,7 @@ class Ui_MainWindow(object):
         self.SSPpointsSpinBox.setObjectName("SSPpointsSpinBox")
         self.SSPpointsSpinBox.setValue(1)
         self.SSPpointsSpinBox.setMinimum(1)
+        self.SSPpointsSpinBox.setMaximum(200)
         self.delaySpinBox = QtWidgets.QSpinBox(parent=self.widget_3)
         self.delaySpinBox.setGeometry(QtCore.QRect(140, 150, 101, 31))
         self.delaySpinBox.setStyleSheet("background-color: white;")
@@ -640,13 +674,17 @@ class Ui_MainWindow(object):
 
         # Table 추가
         self.table = QtWidgets.QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["Time (s)", "Drain Voltage (V)", "Drain Current (A)", "Gate Voltage (V)", "Gate Current (A)"])
-        self.table.setColumnWidth(0,200)
-        self.table.setColumnWidth(1,200)
-        self.table.setColumnWidth(2,200)
-        self.table.setColumnWidth(3,200)
-        self.table.setColumnWidth(4,200)
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels(["Time (s)", "Drain Voltage (V)", "Drain Current (A)", "Drain Log Scale Current (A)",
+                                               "Gate Voltage (V)", "Gate Current (A)","Gate Log Scale Current (A)"])
+        
+        self.table.setColumnWidth(0, 100)
+        self.table.setColumnWidth(1, 150)
+        self.table.setColumnWidth(2, 150)
+        self.table.setColumnWidth(3, 250)
+        self.table.setColumnWidth(4, 150)
+        self.table.setColumnWidth(5, 150)
+        self.table.setColumnWidth(6, 250)
   
         self.table.setStyleSheet("""
             QTableWidget {
@@ -694,14 +732,20 @@ class Ui_MainWindow(object):
         
         self.plotWidget.setBackground('w')  
         self.plotWidget.setLabel('left', 'Drain Current I<sub>d</sub> (A)', color='k', size='17pt')  
-        self.plotWidget.setLabel('bottom', 'Drain Voltage V<sub>d</sub> (V)', color='k', size='17pt')  
+        self.plotWidget.setLabel('bottom', 'Gate Voltage V<sub>d</sub> (V)', color='k', size='17pt')  
+        #self.plotWidget.setLabel('right', 'Gate Current I<sub>g</sub> (A)', color='k', size='17pt')  
         self.plotWidget.getAxis('left').setPen(pg.mkPen(color='k', width=1.5))  # y축 라인을 검은색으로 설정
         self.plotWidget.getAxis('bottom').setPen(pg.mkPen(color='k', width=1.5))  # x축 라인을 검은색으로 설정
         m_pen = QtGui.QPen(QtGui.QColor(255,0,0))
         m_pen.setCosmetic(True) 
         m_pen.setWidth(2) 
         m_pen.setStyle(QtCore.Qt.PenStyle.SolidLine)
+        m_pen1 = QtGui.QPen(QtGui.QColor(0,255,0))
+        m_pen1.setCosmetic(True) 
+        m_pen1.setWidth(2) 
+        m_pen1.setStyle(QtCore.Qt.PenStyle.SolidLine)
         self.curve = self.plotWidget.plot([], [], pen=m_pen, width=2,symbolBrush =(255, 0, 0), symbol='s')
+        #self.curve2 = self.plotWidget.plot([], [], pen=m_pen1, width=2,symbolBrush =(0, 255, 0), symbol='o')
         self.graphTabLayout.addWidget(self.plotWidget)    
         
         self.tabWidget.addTab(self.graphTab, "")
@@ -936,7 +980,7 @@ class Ui_MainWindow(object):
         self.modeComboBox.setItemText(0, _translate("MainWindow", "Linear Sweep"))
         self.modeComboBox.setItemText(1, _translate("MainWindow", "Bias"))
         self.modeComboBox.setItemText(2, _translate("MainWindow", "Step"))
-        self.checkBox.setText(_translate("MainWindow", "Dual Sweep"))
+        self.dualSweepcheckBox.setText(_translate("MainWindow", "Dual Sweep"))
         self.label_14.setText(_translate("MainWindow", "Source"))
         self.label_9.setText(_translate("MainWindow", "Start"))
         self.label_10.setText(_translate("MainWindow", "Stop"))
@@ -978,15 +1022,17 @@ class Ui_MainWindow(object):
             self.addr2420 = addr
             try:
                 # device 연결
+                deviceStr = f"2420 - {self.addr2420}\nConncted"
                 device = self.rm.open_resource(f'GPIB0::{self.addr2420}::INSTR')
-                self.smu2420Button.setText("2420 - {self.addr2420}\nConnected") 
+                self.smu2420Button.setText(deviceStr) 
                 self.device2420 = SMUDevice("2420", device)
                 self.thread.setDevice(self.device2420, 0) 
                 print("Device 2420 Connected") 
                 
             except pyvisa.errors.VisaIOError as e:
                 print(e)
-                self.smu2420Button.setText(f"2420 - {self.addr2420}\nFailed to Connect")
+                deviceStr = f"2420 - {self.addr2420}\nFailed to Connect"
+                self.smu2420Button.setText(deviceStr)
                 self.device2420 = None
 
         elif idx == 1:  # device 2635b
@@ -997,22 +1043,26 @@ class Ui_MainWindow(object):
 
             try:
                 # device 연결
+                deviceStr = f"2635b - {self.addr2635b}\nConncted"
                 device = self.rm.open_resource(f'GPIB1::{self.addr2635b}::INSTR')
-                self.smu2635bButton.setText("2635b - {self.addr2635b}\nConncted")     
+                self.smu2635bButton.setText(deviceStr)     
                 self.device2635b = SMUDevice("2635b", device)
                 self.thread.setDevice(self.device2635b, 1) 
+
             except Exception as e:
-                self.smu2635bButton.setText(f"2635b - {self.addr2635b}\nFailed to connect")
+                deviceStr = f"2635b - {self.addr2635b}\nFailed to connect"
+                self.smu2635bButton.setText(deviceStr)
                 self.device2635b = None
             
     def saveSettings(self, idx):
         self.commonSet.update(self.SSPpointsSpinBox.value(),
                             self.delaySpinBox.value(),
                             self.repeatSpinBox.value())
-        self.thread.updateSettings(self.commonSet)
+        self.commonSet.updateDualSweep(self.dualSweepcheckBox.isChecked())
+
         voltRangeIdx = self.sourceRangeComboBox.currentIndex()
         currRangeIdx = self.measureRangeComboBox.currentIndex()
-
+        modeIdx = self.modeComboBox.currentIndex()
         if idx==0:
             self.device2420.setSweepValues(
                 self.startvSpinBox.value(),
@@ -1020,6 +1070,7 @@ class Ui_MainWindow(object):
                 self.stepvSpinBox.value())
             self.device2420.setRange(self.measureRangeLists2420Value[currRangeIdx], self.sourceRangeListsValue[voltRangeIdx])
             self.device2420.setCurrentLimitValue(self.limitCurrentDSB.value())
+            self.device2420.setIdx(modeIdx, voltRangeIdx, currRangeIdx)
         elif idx==1:
             self.device2635b.setSweepValues(
                 self.startvSpinBox.value(),
@@ -1027,6 +1078,8 @@ class Ui_MainWindow(object):
                 self.stepvSpinBox.value())
             self.device2635b.setRange(self.measureRangeLists2635bValue[currRangeIdx], self.sourceRangeListsValue[voltRangeIdx])
             self.device2635b.setCurrentLimitValue(self.limitCurrentDSB.value())
+            self.device2635b.setIdx(modeIdx, voltRangeIdx, currRangeIdx)
+
     def SetCommonSettings(self, settings):
 
         self.SSPpointsSpinBox.setValue(settings.sweepPoint)
@@ -1040,7 +1093,8 @@ class Ui_MainWindow(object):
         self.startvSpinBox.setValue(device.startVolt)
         self.stopvSpinBox.setValue(device.stopVolt)
         self.stepvSpinBox.setValue(device.stepVolt)
-
+        self.limitCurrentDSB.setValue(float(device.currentLimit))
+        self.modeComboBox.setCurrentIndex(int(device.modeIdx))
         if idx == 0:  # 2420
 
             self.ModelLabel.setText("Model : 2420")
@@ -1057,23 +1111,29 @@ class Ui_MainWindow(object):
             self.measureRangeComboBox.addItems(self.measureRangeLists2635b)
             self.ModelLabel.setText("Model : 2635b")
 
+        self.measureRangeComboBox.setCurrentIndex(int(device.currentRangeIdx))
+        self.sourceRangeComboBox.setCurrentIndex(int(device.voltRangeIdx))
+
     def runStart(self):
         if self.thread.threadReady() :
             self.thread.start()
+
     # DrainVolt , DrainCurr, DrainLogCurr, GateVolt, GateCurr, GateLogCurr, Time
     def updateTabs(self,  drainVolts , drainCurrs, drainLogCurrs, gateVolts, gateCurrs, gateLogCurrs, time):
         #print(time)
         #print(volts)
         #print(currs)
-        self.curve.setData(gateVolts, drainCurrs)
+        self.curve.setData(gateVolts, drainLogCurrs)
         row_position = self.table.rowCount()
         self.table.insertRow(row_position)
         
         self.table.setItem(row_position, 0, QtWidgets.QTableWidgetItem(str(time)))
         self.table.setItem(row_position, 1,  QtWidgets.QTableWidgetItem(str(drainVolts[row_position])))
         self.table.setItem(row_position, 2,  QtWidgets.QTableWidgetItem(str(drainCurrs[row_position])))
-        self.table.setItem(row_position, 3,  QtWidgets.QTableWidgetItem(str(gateVolts[row_position])))
-        self.table.setItem(row_position, 4,  QtWidgets.QTableWidgetItem(str(gateCurrs[row_position])))
+        self.table.setItem(row_position, 3,  QtWidgets.QTableWidgetItem(str(drainLogCurrs[row_position])))
+        self.table.setItem(row_position, 4,  QtWidgets.QTableWidgetItem(str(gateVolts[row_position])))
+        self.table.setItem(row_position, 5,  QtWidgets.QTableWidgetItem(str(gateCurrs[row_position])))
+        self.table.setItem(row_position, 6,  QtWidgets.QTableWidgetItem(str(gateLogCurrs[row_position])))
 
     def updateMode(self):
         mode = self.modeComboBox.currentIndex()
@@ -1103,7 +1163,8 @@ class Ui_MainWindow(object):
                     row_data.append(item.text() if item else "")
                 data.append(row_data)
             # DrainVolt , DrainCurr, DrainLogCurr, GateVolt, GateCurr, GateLogCurr, Time
-            df = pd.DataFrame(data, columns=["Time (s)", "Drain Vol (V)", "Drina Current (V)"])
+            df = pd.DataFrame(data, columns=["Time (s)", "Drain Voltage (V)", "Drain Current (A)", "Drain Log Scale Current (A)",
+                                               "Gate Voltage (V)", "Gate Current (A)","Gate Log Scale Current (A)"])
             df.to_excel(path, index=False)
 
     # 현재 윈도우의 내용을 캡처
@@ -1144,11 +1205,16 @@ class Ui_MainWindow(object):
         start = self.startvSpinBox.value()
         stop = self.stopvSpinBox.value()
         sweep = self.SSPpointsSpinBox.value()
-        step = stop - start
         if self.modeComboBox.currentIndex() != 1:
+            step = 0
+
             if sweep != 1:
                 step = (stop-start) / (sweep-1.0)
-        self.stepvSpinBox.setValue(step)
+            else:
+                step = stop - start
+            self.stepvSpinBox.setValue(step)
+
+
 
 
 
